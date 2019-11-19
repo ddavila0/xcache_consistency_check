@@ -1,6 +1,3 @@
-# Get a path and an extension (e.g. .root or .cinfo) as inputs and it creates a list with all the
-# files with such extension below thath path
-
 import os
 import sys
 import glob
@@ -8,7 +5,6 @@ import argparse
 import logging
 import uproot
 
-import pdb; 
 import subprocess
 
 def get_byte_ranges(byte_map_lines, blocksize):
@@ -63,7 +59,6 @@ def parse_cinfo(filename):
     if debug_lvl >2:
         for line in lines:
             print(line)
-
     # Extract the block size from the output of "xrdpfc_print" command
     blocksize = get_block_size(lines)
 
@@ -109,7 +104,7 @@ def get_byte_map(lines):
         for line in byte_map:
             print(line)
 
-        return byte_map
+    return byte_map
 
 
 def get_block_size(lines):
@@ -251,11 +246,50 @@ def check_file(filename,  byte_ranges, is_full_file):
 # Argument parsing
 def parseargs():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", dest="path", required=True,
+    
+    parser.add_argument("--path", dest="path", required=False,
                          help="Path to the files to files to analyze")
+
+    parser.add_argument("--rootfile", dest="rootfile", required=False,
+                         help=".root filename to be analyzed")
+
+    parser.add_argument("--cinfofile", dest="cinfofile", required=False,
+                         help=".cinfo filename corresponding to the root file to be analyzed")
+    
+    parser.add_argument("--full_file", dest="full_file", required=False, action="store_true",
+                         help="Assume that the root file passed in --rootfile is fully downloaded thus does not requires a cinfo file (default: False)")
+
+    parser.add_argument("--debug", dest="debug", required=False, action="store_true",
+                         help="Set log to DEBUG mode (default: False)")
 
     args = parser.parse_args()
 
+    if not args.path and not args.rootfile:
+        log.error("Either --path or --rootfile need to be defined")
+        exit(1)
+    # If --path is not defined then --rootfile it is
+    if not args.path:
+        # Check that the  root file exist
+        if os.path.isfile(args.rootfile) == False:
+            log.error("--rootfile does not exist")
+            exit(1)
+
+        # If --cinfofile is defined
+        if args.cinfofile:
+            # Check that it exists
+            if os.path.isfile(args.cinfofile) == False:
+                log.error("--cinfofile does not exist")
+                exit(1)
+        # If neither --cinfo or --full_file aren't defined
+        # we'll assume that rootfile+".cinfo" must exist
+        elif args.full_file == False:
+            if os.path.isfile(args.rootfile+".cinfo") == False:
+                log.error("--cinfofile is not defined, neither --fullfile and file: "+args.rootfile+".cinfo"+" does not exist")
+                exit(1)
+                
+             
+    # TODO:
+    # make sure either path or rootfile are defined
     return args
 
 
@@ -264,28 +298,50 @@ def parseargs():
 ###############################################################################
 #                               MAIN
 ###############################################################################
+
+# Get arguments
+args = parseargs()
+
 #------ Configs --------------------------------------------------------------
 
 # Dedbug level
-debug_lvl = 3
+debug_lvl = 0
 
 # Log level: {CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET}
-log_lvl = logging.DEBUG
+if args.debug == True:
+    log_lvl = logging.DEBUG
+else:
+    log_lvl = logging.INFO
 
-#------ Parse arguments path and extension -----------------------------------
-args = parseargs()
+#----- Setup the logger and the log level ------------------------------------
+#logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
+logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
+log = logging.getLogger(__name__)
+#-----------------------------------------------------------------------------
+
+#------ Parse arguments ------------------------------------------------------
 
 #TODO
 # validate that the path exist
 path = args.path
+assume_full_file = args.full_file
 
-root_files_dict  = list_files_recursively(path, ".root")
-cinfo_files_dict = list_files_recursively(path, ".cinfo")
-#-----------------------------------------------------------------------------
-
-#----- Setup the logger and the log level ------------------------------------
-logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
-log = logging.getLogger(__name__)
+if not path:
+    rootfile = args.rootfile
+    cinfofile = args.cinfofile
+    log.debug("@path is not defined, analyzing single file: "+rootfile)
+    if not cinfofile and assume_full_file == False:
+        cinfofile = rootfile+".cinfo"
+        log.debug("Not --cinfofile or --full_file are defined assuming: "+cinfofile)
+        only_filename_cinfo = os.path.basename(cinfofile)
+        cinfo_files_dict = dict()
+        cinfo_files_dict[only_filename_cinfo] = cinfofile
+    only_filename_root  = os.path.basename(rootfile)
+    root_files_dict = dict()
+    root_files_dict[only_filename_root] = rootfile
+else:
+    root_files_dict  = list_files_recursively(path, ".root")
+    cinfo_files_dict = list_files_recursively(path, ".cinfo")
 #-----------------------------------------------------------------------------
 
 
@@ -301,19 +357,21 @@ if debug_lvl > 2:
     for i in cinfo_files_dict:
         print(i+" : "+cinfo_files_dict[i])
 
-
 # For every root file 
 for root_file in root_files_dict:
     # Verify that there is a corresponfing .cinfo file
     root_filename  = root_files_dict[root_file]
     cinfo_filename = root_filename+".cinfo" 
-    if root_file+".cinfo" in cinfo_files_dict:
-        print("Analyzing file: %s", root_file)
+    if assume_full_file == True or root_file+".cinfo" in cinfo_files_dict:
+        log.info("Analyzing file: "+ root_file)
         # Step 1. Calculate the byte ranges on the file
-        is_full_file, byte_ranges = parse_cinfo(cinfo_filename)
+        if assume_full_file == True:
+            is_full_file = True
+            byte_ranges = None
+        else:
+            is_full_file, byte_ranges = parse_cinfo(cinfo_filename)
         
         # Step 2. Decompress every fully present basket in the file
-        pdb.set_trace()
         file_corrupted = check_file(root_filename, byte_ranges, is_full_file)
         if file_corrupted == True:
             log.info("CORRUPTED file:  %s", root_filename)
