@@ -6,7 +6,6 @@ import argparse
 import logging
 import uproot
 import subprocess
-import pandas
 
 def get_byte_ranges(byte_map_lines, blocksize):
 
@@ -178,7 +177,7 @@ def basket_in_file(range_list, basket_start, basket_length):
     return status_in_file
 
 
-def get_list_of_baskets(branch, byte_ranges, is_full_file):
+def get_list_of_baskets(branch, byte_ranges, is_full_file, branch_id):
     num_baskets = branch.numbaskets
     
     list_baskets = []
@@ -186,7 +185,7 @@ def get_list_of_baskets(branch, byte_ranges, is_full_file):
         basket_start = branch._fBasketSeek[i]
         basket_length = branch.basket_compressedbytes(i)        
         if is_full_file == True or basket_in_file(byte_ranges, basket_start, basket_length) == 1:
-            list_baskets.append([branch.name, i, basket_start])    
+            list_baskets.append([branch_id, i, basket_start])    
     return list_baskets
 
 def recursive_branch(branch, byte_ranges, is_full_file, branch_dict):
@@ -194,44 +193,79 @@ def recursive_branch(branch, byte_ranges, is_full_file, branch_dict):
     if len(branch.keys()) > 0:
         for sub_branch in branch.itervalues():
             baskets_in_branch = recursive_branch(sub_branch, byte_ranges, is_full_file, branch_dict)
-            if sub_branch not in branch_dict:
-                branch_dict[sub_branch.name]=sub_branch
             list_baskets += baskets_in_branch
     else:
-        baskets_in_branch = get_list_of_baskets(branch, byte_ranges, is_full_file)
+        branch_id = branch.name
+        while branch_id in branch_dict:
+            branch_id+="_1"
+        branch_dict[branch_id]=branch
+        baskets_in_branch = get_list_of_baskets(branch, byte_ranges, is_full_file, branch_id)
         list_baskets += baskets_in_branch
 
     return list_baskets
 
+def nothing():
+    return True
+
+
 def check_file(filename,  byte_ranges, is_full_file):
-    list_baskets = []
     corrupted = False
     f = uproot.open(filename)
+    list_baskets = []
+    branch_dict = dict()
 
     for tree in f.itervalues():
-        if corrupted == True:
-            break
-        branch_dict = dict()
-        log.debug("Tree: "+tree.name)
+        log.info("Tree: "+tree.name)
         for branch in tree.itervalues():
             baskets_in_branch = recursive_branch(branch, byte_ranges, is_full_file, branch_dict)
             list_baskets += baskets_in_branch
-            branch_dict[branch.name]= branch
+    
+    # Sort by the third element on the sublist
+    list_baskets.sort(key = lambda x: x[2]) 
+    log.info("done sorting. Starting to check baskets")
 
-    df = pandas.DataFrame(data= list_baskets, columns = ["branch_name", "basket_id", "position"])
-    sorted_df = df.sort_values("position")
-    for index, row in sorted_df.iterrows():
-        branch = branch_dict[row['branch_name']]
+    for branch_id, basket_id, start in list_baskets:
+        branch = branch_dict[branch_id]
         try:
-            branch.basket(row['basket_id'])
+            branch.my_basket(basket_id)
         except Exception, e:
-           log.debug("Corrupted basket: "+ str(row['basket_id'])+" in branch: "+branch.name + "--" +str(e))        
+           log.info("Corrupted basket: "+ str(basket_id)+" in branch: "+branch.name + "--" +str(e))        
            return True
         
-        
-
     return False
 
+#def check_file_bak(filename,  byte_ranges, is_full_file):
+#    corrupted = False
+#    f = uproot.open(filename)
+#    list_baskets = []
+#    branch_dict = dict()
+#
+#    for tree in f.itervalues():
+#        log.info("Tree: "+tree.name)
+#        for branch in tree.itervalues():
+#            baskets_in_branch = recursive_branch(branch, byte_ranges, is_full_file, branch_dict)
+#            list_baskets += baskets_in_branch
+#    
+#    df = pandas.DataFrame(data= list_baskets, columns = ["branch_name", "basket_id", "position"])
+#    sorted_df = df.sort_values("position")
+#    print(sorted_df)
+#    log.info("done sorting. Starting to check baskets")
+#    #for key in branch_dict:
+#    #    print(key)
+#
+#    for index, row in sorted_df.iterrows():
+#        print(row['position'])
+#        branch = branch_dict[row['branch_name']]
+#        try:
+#            nothing()
+#            #branch.my_basket(row['basket_id'])
+#        except Exception, e:
+#           log.info("Corrupted basket: "+ str(row['basket_id'])+" in branch: "+branch.name + "--" +str(e))        
+#           return True
+#        
+#        
+#
+#    return False
 
 # Argument parsing
 def parseargs():
