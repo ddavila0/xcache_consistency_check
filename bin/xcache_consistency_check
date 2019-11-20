@@ -208,6 +208,33 @@ def nothing():
     return True
 
 
+def check_file_by_tree(filename,  byte_ranges, is_full_file):
+    corrupted = False
+    f = uproot.open(filename)
+
+    for tree in f.itervalues():
+        list_baskets = []
+        branch_dict = dict()
+        log.debug("Tree: "+tree.name)
+        for branch in tree.itervalues():
+            baskets_in_branch = recursive_branch(branch, byte_ranges, is_full_file, branch_dict)
+            list_baskets += baskets_in_branch
+    
+        # Sort by the third element on the sublist
+        list_baskets.sort(key = lambda x: x[2]) 
+        log.debug("done sorting. Starting to check baskets")
+
+        for branch_id, basket_id, start in list_baskets:
+            branch = branch_dict[branch_id]
+            try:
+                branch.my_basket(basket_id)
+            except Exception, e:
+               log.info("Corrupted basket: "+ str(basket_id)+" in branch: "+branch.name + "--" +str(e))        
+               return True
+        
+    return False
+
+
 def check_file(filename,  byte_ranges, is_full_file):
     corrupted = False
     f = uproot.open(filename)
@@ -215,7 +242,7 @@ def check_file(filename,  byte_ranges, is_full_file):
     branch_dict = dict()
 
     for tree in f.itervalues():
-        log.info("Tree: "+tree.name)
+        log.debug("Tree: "+tree.name)
         for branch in tree.itervalues():
             baskets_in_branch = recursive_branch(branch, byte_ranges, is_full_file, branch_dict)
             list_baskets += baskets_in_branch
@@ -234,38 +261,6 @@ def check_file(filename,  byte_ranges, is_full_file):
         
     return False
 
-#def check_file_bak(filename,  byte_ranges, is_full_file):
-#    corrupted = False
-#    f = uproot.open(filename)
-#    list_baskets = []
-#    branch_dict = dict()
-#
-#    for tree in f.itervalues():
-#        log.info("Tree: "+tree.name)
-#        for branch in tree.itervalues():
-#            baskets_in_branch = recursive_branch(branch, byte_ranges, is_full_file, branch_dict)
-#            list_baskets += baskets_in_branch
-#    
-#    df = pandas.DataFrame(data= list_baskets, columns = ["branch_name", "basket_id", "position"])
-#    sorted_df = df.sort_values("position")
-#    print(sorted_df)
-#    log.info("done sorting. Starting to check baskets")
-#    #for key in branch_dict:
-#    #    print(key)
-#
-#    for index, row in sorted_df.iterrows():
-#        print(row['position'])
-#        branch = branch_dict[row['branch_name']]
-#        try:
-#            nothing()
-#            #branch.my_basket(row['basket_id'])
-#        except Exception, e:
-#           log.info("Corrupted basket: "+ str(row['basket_id'])+" in branch: "+branch.name + "--" +str(e))        
-#           return True
-#        
-#        
-#
-#    return False
 
 # Argument parsing
 def parseargs():
@@ -291,6 +286,9 @@ def parseargs():
 
     parser.add_argument("--max", dest="max", required=False, default=-1, type=int,
                          help="Maximum number of files to analyze default(unlimited)")
+
+    parser.add_argument("--by_tree", dest="by_tree", required=False, action="store_true",
+                         help="Sort and check baskets by tree instead of doing all tress together (default: False)")
 
     args = parser.parse_args()
 
@@ -403,7 +401,10 @@ else:
                 is_full_file, byte_ranges = parse_cinfo(cinfo_filename)
             
             # Step 2. Decompress every fully present basket in the file
-            file_corrupted = check_file(root_filename, byte_ranges, is_full_file)
+            if args.by_tree ==True:
+                file_corrupted = check_file_by_tree(root_filename, byte_ranges, is_full_file)
+            else:
+                file_corrupted = check_file(root_filename, byte_ranges, is_full_file)
             if file_corrupted == True:
                 log.info("CORRUPTED file:  %s", root_filename)
             else: 
