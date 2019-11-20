@@ -331,6 +331,7 @@ if not path:
 else:
     root_files_dict  = list_files_recursively(path, ".root")
     cinfo_files_dict = list_files_recursively(path, ".cinfo")
+    log.info("found: "+str(len(root_files_dict))+" .root files in: "+path)
 #-----------------------------------------------------------------------------
 max_counter = 0
 if args.dry_run == True:
