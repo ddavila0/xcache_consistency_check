@@ -197,36 +197,37 @@ def is_branch_corrupted(branch, byte_ranges, is_full_file):
                 return True
     return False
 
+def recursive_branch(branch, byte_ranges, is_full_file, tree_name, prefix):
+    corrupted = False
+    if len(branch.keys()) > 0:
+        for sub_branch in branch.itervalues():
+            corrupted = recursive_branch(sub_branch, byte_ranges, is_full_file, tree_name, "  "+prefix)
+            if corrupted == True:
+                break
+    else:
+        corrupted = is_branch_corrupted(branch, byte_ranges, is_full_file)
+        if corrupted ==True:
+            log.info("CORRUPTED Branch: "+branch.name+" on tree: "+tree_name)
+        else:
+            log.debug(prefix+"branch: "+branch.name)
+
+    return corrupted
+
 def check_file(filename,  byte_ranges, is_full_file):
-    flag_corrupted = False
+    corrupted = False
     f = uproot.open(filename)
 
     for tree in f.itervalues():
-        if flag_corrupted == True:
+        if corrupted == True:
             break
 
         log.debug("Tree: "+tree.name)
         for branch in tree.itervalues():
-            if len(branch.keys()) > 0:
-                log.debug("  Branch: "+branch.name)
-                for subranch in branch.itervalues():
-                    corrupted = is_branch_corrupted(subranch, byte_ranges, is_full_file)
-                    if corrupted: 
-                        log.info("  CORRUPTED Branch: "+branch.name+" on tree: "+tree.name)
-                        flag_corrupted = True
-                        break
-                    else:
-                        log.debug("    Subranch: "+subranch.name)
-            else:
-                corrupted = is_branch_corrupted(branch, byte_ranges, is_full_file)
-                if corrupted:
-                    log.info("  CORRUPTED Branch: "+branch.name+" on tree: "+tree.name)
-                    flag_corrupted = True
-                    break
-                else:
-                    log.debug("  Branch: "+branch.name)
+            corrupted = recursive_branch(branch, byte_ranges, is_full_file, tree.name, "")
+            if corrupted == True:
+                break
 
-    return flag_corrupted
+    return corrupted
 
 
 # Argument parsing
