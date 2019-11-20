@@ -5,7 +5,6 @@ import glob
 import argparse
 import logging
 import uproot
-
 import subprocess
 
 def get_byte_ranges(byte_map_lines, blocksize):
@@ -252,6 +251,9 @@ def parseargs():
     parser.add_argument("--dry_run", dest="dry_run", required=False, action="store_true",
                          help="Just list the files to be analyzed but do not run the check")
 
+    parser.add_argument("--max", dest="max", required=False, default=-1, type=int,
+                         help="Maximum number of files to analyze default(unlimited)")
+
     args = parser.parse_args()
 
     if not args.path and not args.rootfile:
@@ -330,9 +332,11 @@ else:
     root_files_dict  = list_files_recursively(path, ".root")
     cinfo_files_dict = list_files_recursively(path, ".cinfo")
 #-----------------------------------------------------------------------------
-
+max_counter = 0
 if args.dry_run == True:
     for root_file in root_files_dict:
+        if args.max > 0 and  max_counter >= args.max:
+            break
         # Verify that there is a corresponfing .cinfo file
         root_filename  = root_files_dict[root_file]
         cinfo_filename = root_filename+".cinfo" 
@@ -340,10 +344,13 @@ if args.dry_run == True:
             log.info("Analyzing file: "+ root_file)
         else:
             log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename) 
+        max_counter +=1
 
 else:
     # For every root file 
     for root_file in root_files_dict:
+        if args.max > 0 and max_counter >= args.max:
+            break
         # Verify that there is a corresponfing .cinfo file
         root_filename  = root_files_dict[root_file]
         cinfo_filename = root_filename+".cinfo" 
@@ -365,4 +372,5 @@ else:
         else:
             log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename) 
 
+        max_counter +=1
 
