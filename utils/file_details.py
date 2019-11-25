@@ -360,18 +360,20 @@ else:
             # Step 1. Get file details
             if assume_full_file == True:
                 is_full_file = True
+                percentage = 100
+                fileSize=-1
                 byte_ranges = None
             else:
                 is_full_file, byte_ranges, percentage, fileSize= parse_cinfo(cinfo_filename)
                 
             ## Step 2. Get trees, branchs and baskets details
-            num_trees, num_branches, num_baskets, p_lzm4, p_zlib, p_lz4 = check_file(root_filename, byte_ranges, is_full_file)
+            num_trees, num_branches, num_baskets, p_lzma, p_lz4, p_zlib = check_file(root_filename, byte_ranges, is_full_file)
             
             ## Step 3. Save record
-            file_details.append([root_file, fileSize, percentage, num_trees, num_branches, num_baskets, p_lzm4, p_zlib, p_lz4])
+            file_details.append([root_file, fileSize, percentage, num_trees, num_branches, num_baskets, p_lzma, p_zlib, p_lz4])
             log.info("Done with file:  %s", root_filename) 
         max_counter +=1
-    print("file name | file size | Downloaded % | num trees | num branches | num baskets | lzm4 % | zlib % | lz4 % | ")
+    print("file name | file size | Downloaded % | num trees | num branches | num baskets | lzma % | zlib % | lz4 % | ")
     for record in file_details:
         print(record) 
 
