@@ -225,7 +225,7 @@ def check_file(filename,  byte_ranges, is_full_file):
     log.debug("lz4 count: "+str(lz4_count))
     log.debug("zlib count: "+str(zlib_count))
   
-    return tree_count, branch_count, basket_count, lzma_count/basket_count, lz4_count/basket_count, zlib_count/basket_count 
+    return tree_count, branch_count, basket_count, 100*lzma_count/basket_count, 100*lz4_count/basket_count, 100*zlib_count/basket_count 
 
 
 # Argument parsing
