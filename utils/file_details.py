@@ -166,14 +166,34 @@ def basket_in_file(range_list, basket_start, basket_length):
 
 
 def analyze_branch(branch, byte_ranges, is_full_file):
+    zlib_count = lzma_count = lz4_count =0
     try:
         num_baskets = branch.numbaskets
     except Exception, e:
         log.error("numbaskets on branch: "+branch.name+ "--" +str(e))
-        return True
-    
-    #      branch_count, basket_count, compression_algorithm
-    return 1, num_baskets, branch.compression.algo
+   
+    for i in range(0, num_baskets): 
+        key = branch._threadsafe_key(i, None, True)
+        if key.__class__.__name__ == '_RecoveredTBasket':
+            continue
+            #TODO: do something
+        else:
+                      
+            if key.source.__class__.__name__ == "MemmapSource":
+                continue
+                #TODO: do something
+            else: 
+        
+                if "zlib" in str(key.source.compression):
+                    zlib_count +=1
+                elif "lzma" in str(key.source.compression): 
+                    lzma_count += 1
+                elif "lz4" in str(key.source.compression):
+                    lz4_count += 1
+                else:
+                    log.error("unknown compression method: " +str(key.source.compression))
+  #      branch_count, basket_count, compression_algorithm
+    return 1, num_baskets, zlib_count, lzma_count, lz4_count
 
 def recursive_branch(branch, byte_ranges, is_full_file, tree_name, prefix):
     branch_count = basket_count = 0
@@ -187,18 +207,13 @@ def recursive_branch(branch, byte_ranges, is_full_file, tree_name, prefix):
             lz4_count += count_lz4_aux
             zlib_count += count_zlib_aux
     else:
-        count_branch_aux, count_basket_aux, compression_algorithm = analyze_branch(branch, byte_ranges, is_full_file)
+        count_branch_aux, count_basket_aux, count_zlib_aux, count_lzma_aux, count_lz4_aux = analyze_branch(branch, byte_ranges, is_full_file)
         branch_count += count_branch_aux
         basket_count += count_basket_aux
         
-        if compression_algorithm == uproot.const.kZLIB:
-            zlib_count += count_basket_aux 
-        elif compression_algorithm == uproot.const.kLZMA:
-            lzma_count += count_basket_aux
-        elif compression_algorithm == uproot.const.kLZ4:
-            lz4_count += count_basket_aux
-        else:
-            log.error("unrecognized compression algorithm: {0}".format(compression_algorithm))
+        zlib_count = count_zlib_aux 
+        lzma_count = count_lzma_aux
+        lz4_count  = count_lz4_aux
         log.debug(prefix+"branch: "+branch.name)
     return branch_count, basket_count, lzma_count, lz4_count, zlib_count
 
