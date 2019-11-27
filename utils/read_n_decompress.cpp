@@ -8,7 +8,7 @@
 using namespace std;
 
 
-typedef std::tuple<int,int> btuple;
+typedef std::tuple<long,int> btuple;
 
 bool decompress(char * memblock, int basket_length);
 
@@ -47,14 +47,15 @@ bool decompress(char * compressed_bytes, int basket_length){
 int main (int argc, char ** argv) {
     
     char * memblock;
-    int file_size, num_baskets;
-    int basket_start, basket_length, pos;
+    int num_baskets;
+    long file_size, basket_start;
+    int basket_length, pos;
     string delimiter = " ";
     //string root_filename = "/Users/ddavila/projects/corrupted/files/test3.root"; 
     //string basket_list_filename = "/Users/ddavila/projects/corrupted/files/test3.bl";
     string root_filename = argv[1]; 
     string basket_list_filename = argv[2];
-    file_size = stoi(argv[3]);
+    file_size = stol(argv[3]);
     string line;
     vector<btuple> baskets_vector;   
      
@@ -79,7 +80,7 @@ int main (int argc, char ** argv) {
     if (bl_file.is_open()){
         while (getline (bl_file,line)){
             pos = line.find(delimiter);
-            basket_start = stoi(line.substr(0, pos));
+            basket_start = stol(line.substr(0, pos));
             basket_length = stoi(line.substr(pos+1, line.length()));
             baskets_vector.push_back(btuple(basket_start, basket_length));
         }
