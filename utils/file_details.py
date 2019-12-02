@@ -138,12 +138,20 @@ def get_xrdpfc_print_ouput(filename):
     return lines
 
 # Return a list of files, with a given @extension, found under @path
-def list_files_recursively(path, extension):
+def list_files_recursively(path, extension, max_files=0):
+    i=0
+    break_flag= False
     files_dict = dict()
     for x in os.walk(path):
         for file_with_path in glob.glob(os.path.join(x[0], "*"+extension)):
             only_filename = os.path.basename(file_with_path)
             files_dict[only_filename] = file_with_path
+            i+=1
+            if max_files > 0 and max_files == i:
+                break_flag = True
+                break
+        if break_flag == True:
+            break
             
     return files_dict
 
@@ -172,7 +180,7 @@ def analyze_branch(branch, byte_ranges, is_full_file):
     except Exception, e:
         log.error("numbaskets on branch: "+branch.name+ "--" +str(e))
    
-    for i in range(0, num_baskets): 
+    for i in range(0, num_baskets):
         key = branch._threadsafe_key(i, None, True)
         if key.__class__.__name__ == '_RecoveredTBasket':
             continue
@@ -182,16 +190,19 @@ def analyze_branch(branch, byte_ranges, is_full_file):
             if key.source.__class__.__name__ == "MemmapSource":
                 continue
                 #TODO: do something
-            else: 
-        
-                if "zlib" in str(key.source.compression):
+            else:
+                basket_index = key.source._cursor.index
+                fd.seek(basket_index)
+                basket_algo = fd.read(2)
+ 
+                if basket_algo == "ZL":
                     zlib_count +=1
-                elif "lzma" in str(key.source.compression): 
+                elif basket_algo == "XZ": 
                     lzma_count += 1
-                elif "lz4" in str(key.source.compression):
+                elif basket_algo == "L4":
                     lz4_count += 1
                 else:
-                    log.error("unknown compression method: " +str(key.source.compression))
+                    log.error("unknown compression method: " +basket_algo)
   #      branch_count, basket_count, compression_algorithm
     return 1, num_baskets, zlib_count, lzma_count, lz4_count
 
@@ -382,6 +393,7 @@ else:
                 is_full_file, byte_ranges, percentage, fileSize= parse_cinfo(cinfo_filename)
                 
             ## Step 2. Get trees, branchs and baskets details
+            fd = open(root_filename)
             num_trees, num_branches, num_baskets, p_lzma, p_lz4, p_zlib = check_file(root_filename, byte_ranges, is_full_file)
             
             ## Step 3. Save record

@@ -42,18 +42,17 @@ def recursive_branch(branch, prefix):
                     basket_index = key.cursor.index
                 else:
                     basket_index = key.source._cursor.index
-                    if "zlib" in str(key.source.compression):
-                        #print("    Basket: "+str(i)+"\t ["+str(basket_index)+", "+str(basket_length)+"]")
-                        print(str(basket_index+9)+" "+str(basket_length-9))
-                        #fd.seek(basket_index+9)
-                        #compressed_bytes = fd.read(basket_length-9)
-                        #try:
-                        #    uncompressed_bytes = zlib.decompress(compressed_bytes)
-                        #    uncompress_count +=1
-                        #except Exception, e:
-                        #    print("ERROR when trying to decompress basket: "+str(i)+" from branch: "+branch.name)
-                        #    print(e)
-                        #    exit(1)    
+                    #print("    Basket: "+str(i)+"\t ["+str(basket_index)+", "+str(basket_length)+"]")
+                    print(str(basket_index+9)+" "+str(basket_length-9))
+                    #fd.seek(basket_index+9)
+                    #compressed_bytes = fd.read(basket_length-9)
+                    #try:
+                    #    uncompressed_bytes = zlib.decompress(compressed_bytes)
+                    #    uncompress_count +=1
+                    #except Exception, e:
+                    #    print("ERROR when trying to decompress basket: "+str(i)+" from branch: "+branch.name)
+                    #    print(e)
+                    #    exit(1)    
     return uncompress_count, recovered_count, memmap_count
 
 
