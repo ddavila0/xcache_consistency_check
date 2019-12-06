@@ -235,11 +235,13 @@ def parseargs():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--path", dest="path", required=False,
-                         help="Path to the files to files to analyze")
+                         help="Path to the files to analyze, for a single file use --rootfile")
 
     parser.add_argument("--rootfile", dest="rootfile", required=False,
-                         help=".root filename to be analyzed")
-
+                         help=".root filename to be analyzed, if this is a partial file a .cinfo file with the same \
+                            name is expected or use --cinfofile to point to the corresponding .cinfo file. If this is\
+                             a full file set --full_file")
+    
     parser.add_argument("--cinfofile", dest="cinfofile", required=False,
                          help=".cinfo filename corresponding to the root file to be analyzed")
     
@@ -253,7 +255,7 @@ def parseargs():
                          help="Just list the files to be analyzed but do not run the check")
 
     parser.add_argument("--max", dest="max", required=False, default=-1, type=int,
-                         help="Maximum number of files to analyze default(unlimited)")
+                         help="Maximum number of files to analyze default(analyze all files)")
 
     args = parser.parse_args()
 
