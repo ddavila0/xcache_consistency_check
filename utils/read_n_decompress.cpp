@@ -4,20 +4,17 @@
 #include <string>
 #include <fstream>
 #include "zlib.h"
-#include "malloc.h"
+#include <chrono>
 
 using namespace std;
+using namespace std::chrono;
 
 
 typedef std::tuple<long,int> btuple;
 
-bool decompress(char * memblock, int basket_length, int num_decompressed_bytes);
 
-bool decompress(char * compressed_bytes, int basket_length, int num_decompressed_bytes){
-    char * decompressed_bytes;
+bool decompress(char * compressed_bytes, int basket_length, int num_decompressed_bytes, char ** decompressed_bytes){
     int ret;
-
-    decompressed_bytes = new char[num_decompressed_bytes];
 
     z_stream infstream;
     infstream.zalloc = Z_NULL;
@@ -26,26 +23,18 @@ bool decompress(char * compressed_bytes, int basket_length, int num_decompressed
     infstream.avail_in = (uInt)basket_length; // size of input
     infstream.next_in = (Bytef *)compressed_bytes; // input char array
     infstream.avail_out = (uInt)num_decompressed_bytes; // size of output
-    infstream.next_out = (Bytef *)decompressed_bytes; // output char array
+    infstream.next_out = (Bytef *)(*decompressed_bytes); // output char array
      
     // the actual DE-compression work.
     inflateInit(&infstream);
     ret = inflate(&infstream, Z_NO_FLUSH);
     inflateEnd(&infstream);
    
-    // cout << " decompressed length: " << infstream.total_out <<endl;
-    //for(int i=0; i< infstream.total_out; i++){
-    //for(int i=0; i< 64; i++){
-    //    int aux = decompressed_bytes[i];
-    //    cout << aux << " ";
-    //} 
-    //cout << ret <<endl; 
     if(ret == Z_STREAM_END)
         return 0;
     else
         return 1;
 }
-
 
 int main (int argc, char ** argv) {
     
@@ -53,6 +42,7 @@ int main (int argc, char ** argv) {
     int num_baskets;
     long file_size, basket_start;
     int basket_length, pos;
+
     string delimiter = " ";
     string root_filename = argv[1]; 
     string basket_list_filename = argv[2];
@@ -64,6 +54,7 @@ int main (int argc, char ** argv) {
     cout << "bl filename: "<< basket_list_filename << endl;
     cout << "root filesize: "<< file_size << endl;
 
+    auto start_read = high_resolution_clock::now(); 
     //// Read the root file in memory
     ifstream root_file(root_filename, ios::in|ios::binary);
     if (root_file.is_open()){
@@ -74,35 +65,12 @@ int main (int argc, char ** argv) {
         }
         root_file.read(memblock, file_size);
     }
-     //ifstream root_file(root_filename, ios::in|ios::binary);
-    //if (root_file.is_open()){
-    //    //memblock = new char [file_size];
-    //    memblock =(char*) malloc(file_size);
-    //    if(memblock ==NULL){
-    //        cout << "ERROR allocating memory" <<endl;
-    //        return(1);
-    //    }
-    //    int buff_size = 1024*1024*1024; //1GB
-    //    long j;
-    //    cout << "malloc OK" <<endl;
-    //    cout << "expected cycles: " <<file_size/buff_size<<endl;
-    //    for(j=0; j< file_size; j+=buff_size){
-    //        root_file.seekg (j);
-    //        root_file.read (memblock+j, buff_size);
-    //        cout << "read 1GB" << endl;
-    //    }
-    //    j-= buff_size;
-    //    j+= file_size%buff_size;
-    //        cout << "remaining: "<< j <<endl;
-    //    root_file.seekg (j);
-    //    root_file.read (memblock, buff_size);
-    //    root_file.close();
-    //}
-    //else{
-    //    cout << "Unable to open file";
-    //    return(1);
-    //}
     
+    auto stop_read = high_resolution_clock::now();
+    auto duration_read = duration_cast<seconds>(stop_read - start_read); 
+    cout << "duration of read: " << duration_read.count() << endl;
+    
+    auto start_list_baskets = high_resolution_clock::now(); 
     // Create a list of the baskets to decompress
     ifstream bl_file(basket_list_filename);
     if (bl_file.is_open()){
@@ -118,20 +86,21 @@ int main (int argc, char ** argv) {
         cout << "Unable to open file";
         return(1);
     }
-    
-    // For each basket
+    auto stop_list_baskets = high_resolution_clock::now(); 
+    auto duration_list_baskets = duration_cast<seconds>(stop_list_baskets - start_list_baskets); 
+    cout << "duration of list_baskets: " << duration_list_baskets.count() << endl;
+
+     // For each basket
     int b_len; 
     long u1, u2, u3;
-    long b_start, num_decompressed_bytes;	
+    long b_start, num_decompressed_bytes, max_uncompressed_size;	
     bool corrupted = false;
-    /*for(btuple t: baskets_vector){
-        b_start = get<0>(t);
-        b_len = get<1>(t);
-        cout << b_start << " : " << b_len <<endl;
-    }*/
-    int k=0;
-	for(btuple t: baskets_vector){
-        k+=1;
+    
+    auto start_decompress = high_resolution_clock::now(); 
+	char * decompressed_bytes;
+    int allocations = 0;
+    max_uncompressed_size = 0;
+    for(btuple t: baskets_vector){
         b_start = get<0>(t);
         b_len = get<1>(t);
 	    u1 = memblock[b_start -3];
@@ -147,19 +116,18 @@ int main (int argc, char ** argv) {
         if(u3 < 0)
             u3+=256;
 	    num_decompressed_bytes = u1 + (u2 << 8) + (u3 << 16);
-        //if(num_decompressed_bytes ==0){
-        //    cout << b_start << ", " << b_len <<endl;
-        //    cout << u1 << ", " << u2 << ", " << u3 << endl;
-        //    return(1); 
-        //}
-        if(decompress(memblock+b_start, b_len, num_decompressed_bytes) != 0){
-            cout << b_start << ", " <<b_len;
-            cout << " [C]" <<"num_decompressed_bytes: "<<num_decompressed_bytes << endl;
-            cout << " [C]" << endl;
+        decompressed_bytes = new char[num_decompressed_bytes];
+        if(num_decompressed_bytes > max_uncompressed_size){
+            max_uncompressed_size = num_decompressed_bytes;
+            delete[] decompressed_bytes;
+            decompressed_bytes = new char[num_decompressed_bytes];
+            allocations ++;
+        }
+
+        if(decompress(memblock+b_start, b_len, num_decompressed_bytes, &decompressed_bytes) != 0){
             corrupted = true;
         }
     }
-    cout << "k: "<< k <<endl;
     if(corrupted == true){
         cout << "File is corrupted" <<endl;
     }
@@ -167,7 +135,12 @@ int main (int argc, char ** argv) {
         cout << "File is OK" <<endl;
     }
 
-    //decompress(memblock, basket_length);
-    free(memblock);
+    auto stop_decompress = high_resolution_clock::now(); 
+    auto duration_decompress = duration_cast<seconds>(stop_decompress - start_decompress); 
+    cout << "duration of decompress: " << duration_decompress.count() << endl;
+    cout << "number of reallocations: " << allocations << endl;
+ 
+    delete[] decompressed_bytes;
+    delete [] memblock;
     return 0;
 }
