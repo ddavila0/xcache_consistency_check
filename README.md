@@ -20,14 +20,14 @@ There are 2 things to consider when using this tool:
 
 
 
-1. To analyze a single root file that is full.
+
+#### Analyze a single root file that is full.
 
 ```
 bin/xcache_consistency_check --rootfile <ROOT_FILE> --full_file
 ```
 
-2. To analyze a single partial root file when there is a corresponding cinfo file with the same name and path as the
-root file to be analized.
+#### Analyze a single partial root file when there is a corresponding cinfo file with the same name and path as the root file to be analized.
 
 ```
 bin/xcache_consistency_check --rootfile <ROOT_FILE>
@@ -39,7 +39,7 @@ If the .root and the .cinfo file do not have the same name or/and path, use the 
 bin/xcache_consistency_check --rootfile <ROOT_FILE> --cinfofile <CORRESPONDING_CINFO>
 ```
 
-3. Analyze all files under a certain directory.  When dealing with multiple partial files
+#### Analyze all files under a certain directory.  When dealing with multiple partial files
 ```
 bin/xcache_consistency_check --path <PATH_TO_ROOT_FILES>
 ```
