@@ -1,9 +1,12 @@
 import sys
 import zlib
+import pdb
 
 root_filename = sys.argv[1]
 bl_filename = sys.argv[2]
-
+if len(sys.argv) == 4 and sys.argv[3]=="-d":
+    pdb.set_trace()
+    
 fd = open(bl_filename)
 fd_root = open(root_filename)
 
@@ -18,6 +21,7 @@ for line in fd.readlines():
     #u3 = u_bytes[2]
     #num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16) 
     #print(str(seek) + " "+str(num_bytes)+ " "+str(num_uncompressed_bytes))
+    print(str(seek) + " algo: "+algo_bytes)
     
     if algo_bytes == "ZL":
         fd_root.seek(seek)
