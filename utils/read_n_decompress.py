@@ -10,32 +10,41 @@ if len(sys.argv) == 4 and sys.argv[3]=="-d":
 fd = open(bl_filename)
 fd_root = open(root_filename)
 
+file_corrupted = False
 for line in fd.readlines():
     seek = int(line[:-1].split()[0])
     num_bytes = int(line[:-1].split()[1])
         
     fd_root.seek(seek -9)
-    algo_bytes = fd_root.read(2)
-    #u1 = u_bytes[0]
-    #u2 = u_bytes[1]
-    #u3 = u_bytes[2]
-    #num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16) 
-    #print(str(seek) + " "+str(num_bytes)+ " "+str(num_uncompressed_bytes))
-    print(str(seek) + " algo: "+algo_bytes)
+    header = fd_root.read(9)
+    algo_bytes = header[0:2]
+    c1 = int(ord(header[3]))
+    c2 = int(ord(header[4]))
+    c3 = int(ord(header[5]))
+    u1 = int(ord(header[6]))
+    u2 = int(ord(header[7]))
+    u3 = int(ord(header[8]))
+    num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16)
+    num_compressed_bytes = c1 + (c2 << 8) + (c3 << 16)
+    print(str(seek) + ", num_compressed_bytes(uproot) "+str(num_bytes))
+    print(str(seek) + ", num_compressed_bytes(header) "+str(num_compressed_bytes))
+    print(str(seek) + ", num_uncompressed_bytes(header) "+str(num_uncompressed_bytes))
+    print(str(seek) + ",  algo: "+algo_bytes)
     
     if algo_bytes == "ZL":
         fd_root.seek(seek)
-        uncompressed_bytes= fd_root.read(num_bytes)
+        uncompressed_bytes= fd_root.read(num_compressed_bytes)
         try:
             decompressed_bytes = zlib.decompress(uncompressed_bytes)
         except Exception, e:
             print("Corrupted basket")
             print(seek)
-            print(num_bytes)
+            print(num_compressed_bytes)
             print(e)
-            exit(0)
+            file_corrupted = True
     # lzma
     elif algo_bytes == "XZ":
+        uncompressed_bytes= fd_root.read(num_compressed_bytes)
         try:
             from lzma import decompress as lzma_decompress
         except ImportError:
@@ -49,10 +58,9 @@ for line in fd.readlines():
         except Exception, e:
             print("Corrupted basket")
             print(seek)
-            print(num_bytes)
+            print(num_uncompressed_bytes)
             print(e)
-            exit(0)
-         
+            file_corrupted = True
     # lz4
     elif algo_bytes == "L4":
         print("Unsupported algorithm: "+algo_bytes+" , skipping...")
@@ -73,6 +81,7 @@ for line in fd.readlines():
     else:
         print("Unsupported algorithm: "+algo_bytes+" , skipping...")
 
-print("File is OK")
-    
-
+if file_corrupted == False:
+    print("File is OK")
+else:
+    print("File is Corrupted")
