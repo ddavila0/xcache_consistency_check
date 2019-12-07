@@ -7,6 +7,14 @@ import logging
 import uproot
 import subprocess
 import zlib
+try:
+    import lzma
+except ImportError:
+    try:
+        import backports.lzma
+    except ImportError:
+        raise ImportError("Install lzma package with:\n pip install backports.lzma\nor\n conda install -c conda-forge backports.lzma\n(or use Python >= 3.3).")
+
 #import pdb
 
 def get_byte_ranges(byte_map_lines, blocksize):
@@ -278,6 +286,7 @@ def any_basket_corrupted(root_filename, list_of_baskets):
         num_compressed_bytes = c1 + (c2 << 8) + (c3 << 16) 
         log.debug("Seek: "+str(seek) + ", num_compressed_bytes: "+str(num_compressed_bytes)+ " num_uncompressed_bytes: "+str(num_uncompressed_bytes))
         
+        # zlib 
         if algo_bytes == "ZL":
             fd_root.seek(seek)
             compressed_bytes= fd_root.read(num_compressed_bytes)
@@ -287,6 +296,14 @@ def any_basket_corrupted(root_filename, list_of_baskets):
                 log.info("Corrupted Basket on Seek: "+str(seek)+ ". Error message: "+str(e))
                 ret = True
                 break
+        # lzma
+        elif algo_bytes == "XZ":
+            uncompressed_bytes= fd_root.read(num_compressed_bytes)
+            try:
+                lzma.decompress(uncompressed_bytes)
+            except Exception, e:
+                log.info("Corrupted Basket on Seek: "+str(seek)+ ". Error message: "+str(e))
+                ret = True
         else:
             log.info("Unsupported algorithm: "+algo_bytes+" on Seek: "+str(seek)+" , skipping basket...")
 
