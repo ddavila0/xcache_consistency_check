@@ -2,6 +2,16 @@ import sys
 import zlib
 import pdb
 
+def convert(my_list):
+    accumulator = 0
+    j=0
+    my_range =range(0, 64, 8)
+    my_range.reverse()
+    for i in my_range:
+        accumulator += (int(ord(my_list[j]))*pow(2, i))
+        j+=1
+    return accumulator
+
 root_filename = sys.argv[1]
 bl_filename = sys.argv[2]
 if len(sys.argv) == 4 and sys.argv[3]=="-d":
@@ -64,17 +74,23 @@ for line in fd.readlines():
     # lz4
     elif algo_bytes == "L4":
         print("Unsupported algorithm: "+algo_bytes+" , skipping...")
-        #try:
-        #    import xxhash
-        #except ImportError:
-        #    raise ImportError("Install xxhash package with:\n    pip install xxhash\nor\n    conda install -c conda-forge python-xxhash")
-        #compression = self.compression.copy(uproot.const.kLZ4)
-        #compressedbytes -= 8
-        #checksum = cursor.field(self._compressed, self._format_field0)
-        #copy_cursor = copy(cursor)
-        #after_compressed = copy_cursor.bytes(self._compressed, compressedbytes)
-        #if xxhash.xxh64(after_compressed).intdigest() != checksum:
-        #    raise ValueError("LZ4 checksum didn't match")
+        try:
+            import xxhash
+        except ImportError:
+            raise ImportError("Install xxhash package with:\n    pip install xxhash\nor\n    conda install -c conda-forge python-xxhash")
+        num_compressed_bytes -= 8
+        # Read the checksum from the header of the basket
+        fd_root.seek(seek)
+        checksum_8bytes = fd_root.read(8)
+        checksum = convert(checksum_8bytes)
+        fd_root.seek(seek+8)
+        compressed_bytes = fd_root.read(num_compressed_bytes)
+        if xxhash.xxh64(compressed_bytes).intdigest() != checksum:
+            print("Corrupted basket")
+            print(seek)
+            print(num_uncompressed_bytes)
+            print(e)
+            file_corrupted = True
     
     elif algo == b"CS":
         print("Unsupported very OLD algorithm: "+algo_bytes+" , skipping...")
