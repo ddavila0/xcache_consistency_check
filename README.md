@@ -24,7 +24,7 @@ There are 2 things to consider when using this tool:
 #### Analyze a single root file that is full.
 
 ```
-bin/xcache_consistency_check --rootfile <ROOT_FILE> --full_file
+bin/xcache_consistency_check --rootfile <ROOT_FILE> --full-file
 ```
 
 #### Analyze a single partial root file when there is a corresponding cinfo file with the same name and path as the root file to be analized.
@@ -46,7 +46,7 @@ bin/xcache_consistency_check --path <PATH_TO_ROOT_FILES>
 
 Similarly you can use the --full_file option to indicate that all the file are full or not.
 ```
-bin/xcache_consistency_check --path <PATH_TO_ROOT_FILES> --full_file
+bin/xcache_consistency_check --path <PATH_TO_ROOT_FILES> --full-file
 ```
 
 When dealing with multiple partial files, it assumes that there is a corresponding .cinfo file for each
