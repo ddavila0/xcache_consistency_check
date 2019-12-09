@@ -2,7 +2,7 @@
 
 It is a utility that looks for corrupted baskets within root files, it does so by decompressing every basket in the
 file, when the decompression is sucessfull it assumes the basket is ok and continues with the next basket. If abasket
-fails to decompress, the algoritm will log it and continue.
+fails to decompress, the algoritm will log it and exit.
 
 When dealing with a partial file(where not all baskets are fully present in the file), the algorithm
 uses the .cinfo file to determine whether a bsaket is fully present on the file before attempting to

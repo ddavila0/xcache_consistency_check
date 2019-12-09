@@ -6,6 +6,21 @@ import argparse
 import logging
 import uproot
 import subprocess
+import zlib
+try:
+    import lzma
+except ImportError:
+    try:
+        import backports.lzma as lzma
+    except ImportError:
+        raise ImportError("Install lzma package with:\n pip install backports.lzma\nor\n conda install -c conda-forge backports.lzma\n(or use Python >= 3.3).")
+try:
+    import xxhash
+except ImportError:
+    raise ImportError("Install xxhash package with:\n    pip install xxhash\nor\n    conda install -c conda-forge python-xxhash")
+
+
+#import pdb
 
 def get_byte_ranges(byte_map_lines, blocksize):
 
@@ -197,37 +212,151 @@ def is_branch_corrupted(branch, byte_ranges, is_full_file):
                 return True
     return False
 
-def recursive_branch(branch, byte_ranges, is_full_file, tree_name, prefix):
-    corrupted = False
+def get_list_of_baskets_in_branch(branch, byte_ranges, is_full_file):
+    num_baskets = branch.numbaskets
+
+    list_baskets = []
+    for i in range(0, num_baskets):
+        key = branch._threadsafe_key(i, None, True)
+        if key.__class__.__name__ == '_RecoveredTBasket':
+            continue
+            #TODO: do something
+        else:
+            class_name = key.source.__class__.__name__
+            if class_name == "MemmapSource":
+                continue
+                # Basket isn't compressed
+            else:
+                basket_start = key.source._cursor.index 
+                basket_length = branch.basket_compressedbytes(i)
+                if is_full_file == True or basket_in_file(byte_ranges, basket_start, basket_length) == 1:
+                    #TODO:
+                    # append also the length of the basket to compare it with
+                    # the size read from the header of the basket
+        
+                    # 9 is the size of the header
+                    list_baskets.append(basket_start+9)
+    return list_baskets
+
+
+def recursive_branch(branch, byte_ranges, is_full_file):
+    list_baskets = []
     if len(branch.keys()) > 0:
         for sub_branch in branch.itervalues():
-            corrupted = recursive_branch(sub_branch, byte_ranges, is_full_file, tree_name, "  "+prefix)
-            if corrupted == True:
-                break
+            baskets_in_branch = recursive_branch(sub_branch, byte_ranges, is_full_file)
+            list_baskets += baskets_in_branch
     else:
-        corrupted = is_branch_corrupted(branch, byte_ranges, is_full_file)
-        if corrupted ==True:
-            log.info("CORRUPTED Branch: "+branch.name+" on tree: "+tree_name)
-        else:
-            log.debug(prefix+"branch: "+branch.name)
+        baskets_in_branch = get_list_of_baskets_in_branch(branch, byte_ranges, is_full_file)
+        list_baskets += baskets_in_branch
 
-    return corrupted
+    return list_baskets
 
-def check_file(filename,  byte_ranges, is_full_file):
+
+def get_list_of_baskets_in_file(filename,  byte_ranges, is_full_file):
     corrupted = False
     f = uproot.open(filename)
-
+    list_baskets = []
+    
     for tree in f.itervalues():
-        if corrupted == True:
-            break
-
-        log.debug("Tree: "+tree.name)
         for branch in tree.itervalues():
-            corrupted = recursive_branch(branch, byte_ranges, is_full_file, tree.name, "")
-            if corrupted == True:
-                break
+            baskets_in_branch = recursive_branch(branch, byte_ranges, is_full_file)
+            list_baskets += baskets_in_branch
 
-    return corrupted
+    # Remove duplicates
+    list_baskets = list(dict.fromkeys(list_baskets)) 
+    
+    # Sort
+    list_baskets.sort()
+    log.info("done sorting. Starting to check baskets")
+
+    return list_baskets
+
+
+def convert_checksum(checksum_8bytes):
+    checksum = 0
+    j=0
+    my_range =range(0, 64, 8)
+    my_range.reverse()
+    for i in my_range:
+        checksum += (int(ord(checksum_8bytes[j]))*pow(2, i))
+        j+=1
+    return checksum
+
+
+
+def any_basket_corrupted(root_filename, list_of_baskets, find_all):
+   
+    ret = False
+    fd_root = open(root_filename)
+    for seek in list_of_baskets:
+        fd_root.seek(seek -9)
+        header = fd_root.read(9)
+        algo_bytes = header[0:2]
+        version = header[2]
+        c1 = int(ord(header[3]))
+        c2 = int(ord(header[4]))
+        c3 = int(ord(header[5]))
+        u1 = int(ord(header[6]))
+        u2 = int(ord(header[7]))
+        u3 = int(ord(header[8]))
+        num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16) 
+        num_compressed_bytes = c1 + (c2 << 8) + (c3 << 16) 
+        log.debug("Seek: "+str(seek) + ", num_compressed_bytes: "+str(num_compressed_bytes)+ " num_uncompressed_bytes: "+str(num_uncompressed_bytes))
+        
+        # zlib 
+        if algo_bytes == "ZL":
+            fd_root.seek(seek)
+            compressed_bytes= fd_root.read(num_compressed_bytes)
+            try:
+                uncompressed_bytes = zlib.decompress(compressed_bytes)
+            except Exception, e:
+                log.info("Corrupted Basket on Seek: "+str(seek)+ ". Error message: "+str(e))
+                ret = True
+                if find_all == False:
+                    break
+        # lzma
+        elif algo_bytes == "XZ":
+            uncompressed_bytes= fd_root.read(num_compressed_bytes)
+            try:
+                lzma.decompress(uncompressed_bytes)
+            except Exception, e:
+                log.info("Corrupted Basket on Seek: "+str(seek)+ ". Error message: "+str(e))
+                ret = True
+                if find_all == False:
+                    break
+
+        # lz4
+        elif algo_bytes == "L4":
+            # Baskets compressed with this algorithm have an extra 8-byte header containing
+            # a checksum of the compressed data, meaning that the length of the basket is
+            # actually 8 bytes shorter
+            num_compressed_bytes -= 8
+            
+            # Read the checksum from the header of the basket
+            fd_root.seek(seek)
+            checksum_8bytes = fd_root.read(8)
+            # Convert the 8 separated byte into a single number
+            checksum = convert_checksum(checksum_8bytes)
+            
+            # Get the compressed bytes of the basket
+            fd_root.seek(seek+8)
+            compressed_bytes = fd_root.read(num_compressed_bytes)
+            # Calculate the checksum of the compressed bytes and compare it to the one
+            # in the header of the basket
+            if xxhash.xxh64(compressed_bytes).intdigest() != checksum:
+                log.info("Corrupted Basket on Seek: "+str(seek)+ ". Checksums do not match")
+                ret = True
+                if find_all == False:
+                    break
+       
+        elif algo == b"CS":
+            log.info("Unsupported very OLD algorithm: "+algo_bytes+" , skipping...")
+ 
+        else:
+            log.info("Unsupported algorithm: "+algo_bytes+" on Seek: "+str(seek)+" , skipping basket...")
+
+    fd_root.close()
+    return ret
 
 
 # Argument parsing
@@ -245,17 +374,21 @@ def parseargs():
     parser.add_argument("--cinfofile", dest="cinfofile", required=False,
                          help=".cinfo filename corresponding to the root file to be analyzed")
     
-    parser.add_argument("--full_file", dest="full_file", required=False, action="store_true",
+    parser.add_argument("--full-file", dest="full_file", required=False, action="store_true",
                          help="Assume that the root file passed in --rootfile is fully downloaded thus does not requires a cinfo file (default: False)")
 
     parser.add_argument("--debug", dest="debug", required=False, action="store_true",
                          help="Set log to DEBUG mode (default: False)")
 
-    parser.add_argument("--dry_run", dest="dry_run", required=False, action="store_true",
+    parser.add_argument("--dry-run", dest="dry_run", required=False, action="store_true",
                          help="Just list the files to be analyzed but do not run the check")
 
     parser.add_argument("--max", dest="max", required=False, default=-1, type=int,
                          help="Maximum number of files to analyze default(analyze all files)")
+
+    parser.add_argument("--find-all", dest="find_all", required=False, action="store_true",
+                         help="Makes the algorithm not to stop when a corrupted basket has been found")
+
 
     args = parser.parse_args()
 
@@ -282,12 +415,7 @@ def parseargs():
                 print("ERROR --cinfofile is not defined, neither --full_file and file: "+args.rootfile+".cinfo"+" does not exist")
                 exit(1)
                 
-             
-    # TODO:
-    # make sure either path or rootfile are defined
     return args
-
-
 
 
 ###############################################################################
@@ -311,8 +439,8 @@ logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(messag
 log = logging.getLogger(__name__)
 #-----------------------------------------------------------------------------
 
-#------ Parse arguments ------------------------------------------------------
 
+#------ Find file(s)  ---------------------------------------------------------
 #TODO
 # validate that the path exist
 path = args.path
@@ -335,8 +463,10 @@ else:
     root_files_dict  = list_files_recursively(path, ".root")
     cinfo_files_dict = list_files_recursively(path, ".cinfo")
     log.info("found: "+str(len(root_files_dict))+" .root files in: "+path)
-#-----------------------------------------------------------------------------
 max_counter = 0
+
+
+#------ Dry Run  --------------------------------------------------------------
 if args.dry_run == True:
     for root_file in root_files_dict:
         if args.max > 0 and  max_counter >= args.max:
@@ -350,6 +480,7 @@ if args.dry_run == True:
             log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename) 
         max_counter +=1
 
+#------ Real Run  -------------------------------------------------------------
 else:
     # For every root file 
     for root_file in root_files_dict:
@@ -366,9 +497,11 @@ else:
                 byte_ranges = None
             else:
                 is_full_file, byte_ranges = parse_cinfo(cinfo_filename)
+            # Step 2. Create a list of baskets in the file
+            list_of_baskets = get_list_of_baskets_in_file(root_filename, byte_ranges, is_full_file)
             
-            # Step 2. Decompress every fully present basket in the file
-            file_corrupted = check_file(root_filename, byte_ranges, is_full_file)
+            # Step 3. Look for a corrupted basket within the list
+            file_corrupted = any_basket_corrupted(root_filename, list_of_baskets, args.find_all)
             if file_corrupted == True:
                 log.info("CORRUPTED file:  %s", root_filename)
             else: 
