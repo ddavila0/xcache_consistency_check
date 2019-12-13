@@ -12,7 +12,6 @@ def check_baskets(baskets_list, shrd_basket_index, chunk, num_baskets, shrd_corr
     while(finished == False and corrupted==False):
         lock.acquire()
 
-        #print("process : "+str(os.getpid())+ " checking")
         # If somebody else found something corrupted or there are no more baskets to analyze
         if shrd_corrupted.value == 1 or shrd_basket_index.value >= num_baskets:
             print("process : "+str(os.getpid())+ " finishing here. shrd_corrupted = "+str(shrd_corrupted.value)+" shrd_basket_index= "+str(shrd_basket_index.value))
@@ -31,7 +30,6 @@ def check_baskets(baskets_list, shrd_basket_index, chunk, num_baskets, shrd_corr
         for seek in baskets_list[start:stop]:
             fd.seek(seek-9)
             header = fd.read(9)
-            #header = file_bytes[seek-9:seek]
             algo_bytes = header[0:2]
             c1 = int(ord(header[3]))
             c2 = int(ord(header[4]))
@@ -41,15 +39,11 @@ def check_baskets(baskets_list, shrd_basket_index, chunk, num_baskets, shrd_corr
             u3 = int(ord(header[8]))
             num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16)
             num_compressed_bytes = c1 + (c2 << 8) + (c3 << 16)
-            #print(str(seek) + ", num_compressed_bytes(header) "+str(num_compressed_bytes))
-            #print(str(seek) + ", num_uncompressed_bytes(header) "+str(num_uncompressed_bytes))
-            #print(str(seek) + ",  algo: "+algo_bytes)
 
             if algo_bytes == "ZL":
                 try:
                     fd.seek(seek)
                     zlib.decompress(fd.read(num_compressed_bytes))
-                    #zlib.decompress(file_bytes[seek:seek+num_compressed_bytes])
                 except Exception, e:
                     corrupted = True
                     lock.acquire()
