@@ -1,103 +1,90 @@
 import sys
+import os
 import zlib
-import pdb
+from multiprocessing import Process, Value, Array, Lock
 
-def convert(my_list):
-    accumulator = 0
-    j=0
-    my_range =range(0, 64, 8)
-    my_range.reverse()
-    for i in my_range:
-        accumulator += (int(ord(my_list[j]))*pow(2, i))
-        j+=1
-    return accumulator
 
-root_filename = sys.argv[1]
-bl_filename = sys.argv[2]
-if len(sys.argv) == 4 and sys.argv[3]=="-d":
-    pdb.set_trace()
-    
-fd = open(bl_filename)
-fd_root = open(root_filename)
+def check_baskets(file_bytes, baskets_list, shrd_basket_index, chunk, num_baskets, shrd_corrupted, lock):
+    print("process : "+str(os.getpid())+ " starting check_baskets")
+    finished = False
+    corrupted = False
+    while(finished == False and corrupted==False):
+        lock.acquire()
 
-file_corrupted = False
-for line in fd.readlines():
-    seek = int(line[:-1].split()[0])
-    num_bytes = int(line[:-1].split()[1])
+        print("process : "+str(os.getpid())+ " checking")
+        # If somebody else found something corrupted or there are no more baskets to analyze
+        if shrd_corrupted.value == 1 or shrd_basket_index.value >= num_baskets:
+            print("process : "+str(os.getpid())+ " finishing here. shrd_corrupted = "+str(shrd_corrupted.value)+" shrd_basket_index= "+str(shrd_basket_index.value))
+            print("process : "+str(os.getpid())+ " num_baskets = "+str(num_baskets))
+            finished = True
+            lock.release()
+            break
+
+        start = shrd_basket_index.value
+        shrd_basket_index.value += chunk
+        lock.release()
         
-    fd_root.seek(seek -9)
-    header = fd_root.read(9)
-    algo_bytes = header[0:2]
-    c1 = int(ord(header[3]))
-    c2 = int(ord(header[4]))
-    c3 = int(ord(header[5]))
-    u1 = int(ord(header[6]))
-    u2 = int(ord(header[7]))
-    u3 = int(ord(header[8]))
-    num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16)
-    num_compressed_bytes = c1 + (c2 << 8) + (c3 << 16)
-    print(str(seek) + ", num_compressed_bytes(uproot) "+str(num_bytes))
-    print(str(seek) + ", num_compressed_bytes(header) "+str(num_compressed_bytes))
-    print(str(seek) + ", num_uncompressed_bytes(header) "+str(num_uncompressed_bytes))
-    print(str(seek) + ",  algo: "+algo_bytes)
-    
-    if algo_bytes == "ZL":
-        fd_root.seek(seek)
-        uncompressed_bytes= fd_root.read(num_compressed_bytes)
-        try:
-            decompressed_bytes = zlib.decompress(uncompressed_bytes)
-        except Exception, e:
-            print("Corrupted basket")
-            print(seek)
-            print(num_compressed_bytes)
-            print(e)
-            file_corrupted = True
-    # lzma
-    elif algo_bytes == "XZ":
-        uncompressed_bytes= fd_root.read(num_compressed_bytes)
-        try:
-            from lzma import decompress as lzma_decompress
-        except ImportError:
-            try:
-                from backports.lzma import decompress as lzma_decompress
-            except ImportError:
-                raise ImportError("Install lzma package with:\n pip install backports.lzma\nor\n conda install -c conda-forge backports.lzma\n(or just use Python >= 3.3).")
-            
-        try:
-            lzma_decompress(uncompressed_bytes)
-        except Exception, e:
-            print("Corrupted basket")
-            print(seek)
-            print(num_uncompressed_bytes)
-            print(e)
-            file_corrupted = True
-    # lz4
-    elif algo_bytes == "L4":
-        print("Unsupported algorithm: "+algo_bytes+" , skipping...")
-        try:
-            import xxhash
-        except ImportError:
-            raise ImportError("Install xxhash package with:\n    pip install xxhash\nor\n    conda install -c conda-forge python-xxhash")
-        num_compressed_bytes -= 8
-        # Read the checksum from the header of the basket
-        fd_root.seek(seek)
-        checksum_8bytes = fd_root.read(8)
-        checksum = convert(checksum_8bytes)
-        fd_root.seek(seek+8)
-        compressed_bytes = fd_root.read(num_compressed_bytes)
-        if xxhash.xxh64(compressed_bytes).intdigest() != checksum:
-            print("Corrupted basket")
-            print(seek)
-            print(num_uncompressed_bytes)
-            print(e)
-            file_corrupted = True
-    
-    elif algo == b"CS":
-        print("Unsupported very OLD algorithm: "+algo_bytes+" , skipping...")
-    else:
-        print("Unsupported algorithm: "+algo_bytes+" , skipping...")
+        stop = start + chunk
+        if stop > num_baskets:
+            stop = num_baskets
+        for seek in baskets_list[start:stop]:
+            header = file_bytes[seek-9:seek]
+            algo_bytes = header[0:2]
+            c1 = int(ord(header[3]))
+            c2 = int(ord(header[4]))
+            c3 = int(ord(header[5]))
+            u1 = int(ord(header[6]))
+            u2 = int(ord(header[7]))
+            u3 = int(ord(header[8]))
+            num_uncompressed_bytes = u1 + (u2 << 8) + (u3 << 16)
+            num_compressed_bytes = c1 + (c2 << 8) + (c3 << 16)
+            #print(str(seek) + ", num_compressed_bytes(header) "+str(num_compressed_bytes))
+            #print(str(seek) + ", num_uncompressed_bytes(header) "+str(num_uncompressed_bytes))
+            #print(str(seek) + ",  algo: "+algo_bytes)
 
-if file_corrupted == False:
-    print("File is OK")
-else:
-    print("File is Corrupted")
+            if algo_bytes == "ZL":
+                try:
+                    zlib.decompress(file_bytes[seek:seek+num_compressed_bytes])
+                except Exception, e:
+                    corrupted = True
+                    lock.acquire()
+                    shrd_corrupted.value = 1
+                    print("process : "+str(os.getpid())+ " found corrupted basket on seek: "+str(seek))
+                    lock.release()
+                    break
+            else:
+                print("Unsupported algorithm. skipping...")
+
+
+if __name__ == '__main__':
+    file_root           = sys.argv[1]
+    file_bl             = sys.argv[2]
+    file_size_root      = int(sys.argv[3])
+    
+    root_fd = open(file_root)
+    bl_fd = open(file_bl)
+
+    baskets = []
+    for line in bl_fd.readlines():
+        baskets.append(int(line))
+    
+    chunk = 10
+    basket_index = Value('i', 0)
+    corrupted_flag = Value('i', 0)
+    arr_root = Array('c', root_fd.read(file_size_root))
+    lock = Lock()
+
+    p1 = Process(target=check_baskets, args=(arr_root, baskets, basket_index, chunk, len(baskets), corrupted_flag, lock))
+    p2 = Process(target=check_baskets, args=(arr_root, baskets, basket_index, chunk, len(baskets), corrupted_flag, lock))
+    p3 = Process(target=check_baskets, args=(arr_root, baskets, basket_index, chunk, len(baskets), corrupted_flag, lock))
+    p1.start()
+    p2.start()
+    p3.start()
+    print("process : "+str(os.getpid())+ " waiting on workers")
+    p1.join()
+    p2.join()
+    p3.join()
+    if corrupted_flag.value ==True:
+        print("File is corrupted")
+    else:
+        print("file is OK")
