@@ -43,7 +43,8 @@ def recursive_branch(branch, prefix):
                 else:
                     basket_index = key.source._cursor.index
                     #print("    Basket: "+str(i)+"\t ["+str(basket_index)+", "+str(basket_length)+"]")
-                    print(str(basket_index+9)+" "+str(basket_length-9))
+                    #print(str(basket_index+9)+" "+str(basket_length-9))
+                    print(str(basket_index+9))
                     #fd.seek(basket_index+9)
                     #compressed_bytes = fd.read(basket_length-9)
                     #try:
