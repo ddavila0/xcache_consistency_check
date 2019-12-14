@@ -9,8 +9,8 @@ directory "/lib/python2.7/site-packages/uproot/tree.py"
 
 v2.0.0 - uproot to list baskets
 -----------------------------------------------------------------------------------------------------------------------
-It uses uprrot to create the list of baskets that need to be decompressed. Then the baskets are decompressed using
-the zlb.decompress() routine directly withouth the use of uproot
+It uses uproot to create the list of baskets that need to be decompressed. Then the baskets are decompressed using
+the decompress() routines directly withouth the use of uproot
 
 =======================================================================================================================
 
