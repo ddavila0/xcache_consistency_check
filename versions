@@ -22,6 +22,14 @@ Introduces parallelism
 
 v4.0.0
 -----------------------------------------------------------------------------------------------------------------------
-Uses a DB to keep track of analyzed files
+- Uses a DB to keep track of analyzed files
+- do not create a dictionary of cinfo file, but check that a cinfo file exists when about to analyze an incomplete
+    xrootd file
 =======================================================================================================================
+
+v5.0.0
+-----------------------------------------------------------------------------------------------------------------------
+- includes an installer
+- refactorize the code
+======================================================================================================================
 
