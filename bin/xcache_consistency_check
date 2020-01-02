@@ -378,9 +378,6 @@ def parseargs():
                             name is expected or use --cinfofile to point to the corresponding .cinfo file. If this is\
                              a full file set --full_file")
 
-    parser.add_argument("--cinfofile", dest="cinfofile", required=False,
-                         help=".cinfo filename corresponding to the root file to be analyzed")
-
     parser.add_argument("--full-file", dest="full_file", required=False, action="store_true",
                          help="Assume that the root file passed in --rootfile is fully downloaded thus does not requires a cinfo file (default: False)")
 
@@ -415,17 +412,10 @@ def parseargs():
             print("ERROR: --rootfile: "+args.rootfile+" does not exist")
             exit(1)
 
-        # If --cinfofile is defined
-        if args.cinfofile:
-            # Check that it exists
-            if os.path.isfile(args.cinfofile) == False:
-                print("ERROR: --cinfofile: "+args.cinfofile+" does not exist")
-                exit(1)
-        # If neither --cinfo or --full_file aren't defined
-        # we'll assume that rootfile+".cinfo" must exist
+        # If --full_file isn't defined then rootfile+".cinfo" must exist
         elif args.full_file == False:
             if os.path.isfile(args.rootfile+".cinfo") == False:
-                print("ERROR --cinfofile is not defined, neither --full_file and file: "+args.rootfile+".cinfo"+" does not exist")
+                print("ERROR --full_file isn't defined and file: "+args.rootfile+".cinfo"+" does not exist")
                 exit(1)
 
     return args
@@ -536,22 +526,15 @@ conn = create_connection(args.db)
 path = args.path
 assume_full_file = args.full_file
 
+# If path is not defined that means we are analizing a single root file
 if not path:
     rootfile = args.rootfile
-    cinfofile = args.cinfofile
     log.debug("@path is not defined, analyzing single file: "+rootfile)
-    if not cinfofile and assume_full_file == False:
-        cinfofile = rootfile+".cinfo"
-        log.debug("Not --cinfofile or --full_file are defined assuming: "+cinfofile)
-        only_filename_cinfo = os.path.basename(cinfofile)
-        cinfo_files_dict = dict()
-        cinfo_files_dict[only_filename_cinfo] = cinfofile
     only_filename_root  = os.path.basename(rootfile)
     root_files_dict = dict()
     root_files_dict[only_filename_root] = rootfile
 else:
     root_files_dict  = list_files_recursively(path, ".root")
-    cinfo_files_dict = list_files_recursively(path, ".cinfo")
     log.info("found: "+str(len(root_files_dict))+" .root files in: "+path)
 max_counter = 0
 
@@ -564,7 +547,7 @@ if args.dry_run == True:
         # Verify that there is a corresponfing .cinfo file
         root_filename  = root_files_dict[root_file]
         cinfo_filename = root_filename+".cinfo"
-        if root_file+".cinfo" in cinfo_files_dict:
+        if os.path.isfile(cinfo_filename):
             log.info("Analyzing file: "+ root_file)
         else:
             log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
@@ -579,7 +562,8 @@ else:
         # Verify that there is a corresponfing .cinfo file
         root_filename  = root_files_dict[root_file]
         cinfo_filename = root_filename+".cinfo"
-        if assume_full_file == True or root_file+".cinfo" in cinfo_files_dict:
+        if assume_full_file == True or os.path.isfile(cinfo_filename):
+        #if assume_full_file == True or root_file+".cinfo" in cinfo_files_dict:
             log.info("Analyzing file: "+ root_file)
             # Step 1. Calculate the byte ranges on the file
             if assume_full_file == True:
