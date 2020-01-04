@@ -11,6 +11,7 @@ from multiprocessing import Process, Value, Lock
 import sqlite3
 from sqlite3 import Error
 import time
+import pdb
 
 try:
     import lzma
@@ -18,11 +19,11 @@ except ImportError:
     try:
         import backports.lzma as lzma
     except ImportError:
-        raise ImportError("Install lzma package with:\n pip install backports.lzma\nor\n conda install -c conda-forge backports.lzma\n(or use Python >= 3.3).")
+        raise ImportError("Install lzma package with:\n\t pip install backports.lzma\nor\n\t conda install -c conda-forge backports.lzma\n(or use Python >= 3.3).")
 try:
     import xxhash
 except ImportError:
-    raise ImportError("Install xxhash package with:\n    pip install xxhash\nor\n    conda install -c conda-forge python-xxhash")
+    raise ImportError("Install xxhash package with:\n\t pip install xxhash\nor\n\tconda install -c conda-forge python-xxhash")
 
 
 def get_byte_ranges(byte_map_lines, blocksize):
@@ -446,7 +447,7 @@ def create_db(filename):
                                         filename text,
                                         last_check_ts integer,
                                         last_num_blocks integer,
-                                        checksum integer
+                                        checksum text
                                     ); """
 
     # create a database connection
@@ -462,18 +463,32 @@ def create_db(filename):
 def calculate_checksum(filename):
     fd = open(filename)
     file_bytes = fd.read()
-    checksum = xxhash.xxh64(file_bytes).intdigest()
+    checksum = str(xxhash.xxh64(file_bytes).intdigest())
     return checksum
 
-def insert_in_db(conn, root_filename, file_checksum, num_blocks, ts):
+def insert_in_db(conn, root_filename, ts, num_blocks, file_checksum):
     sql = ''' INSERT INTO files(filename, last_check_ts, last_num_blocks, checksum)
               VALUES(?,?,?,?) '''
 
-    record =(root_filename, file_checksum, num_blocks, ts)
+    record =(root_filename, ts, num_blocks, file_checksum)
     with conn:
         cur = conn.cursor()
         cur.execute(sql, record)
     log.debug("inserted record: "+str(cur.lastrowid))
+
+# When a file has changed (new blocks have been downloaded) its record needs to be updated
+def update_db(conn, root_filename, ts, num_blocks, file_checksum):
+    sql = ''' UPDATE files
+                SET last_check_ts = ?,
+                    last_num_blocks = ?,
+                    checksum = ?
+                WHERE filename = ?'''
+
+    record =(ts, num_blocks, file_checksum, root_filename)
+    with conn:
+        cur = conn.cursor()
+        cur.execute(sql, record)
+    log.debug("updated record: "+root_filename)
 
 
 
@@ -572,7 +587,7 @@ else:
                 num_blocks=0
             else:
                 is_full_file, byte_ranges, num_blocks = parse_cinfo(cinfo_filename)
-
+            pdb.set_trace()
             ### Step 1.1 Do I need to fully analyze this file or only verify the checksum?
             db_file_id = None
             db_file_id, db_last_check_ts, db_last_num_blocks, db_checksum = get_file_from_db(conn, root_file)
@@ -590,13 +605,12 @@ else:
                     # There are no new blocks added to the file but the file has changed
                     # that means the file is corrupted
                     else:
-                        log.info("Corrupted file's checksum:  %s, db:%s, curr:%s", root_filename, str(db_checksum),str(curr_checksum))
-                        print(type(db_checksum))
-                        print(type(curr_checksum))
+                        log.info("Corrupted file's checksum:  %s, db:%s, curr:%s", root_filename, db_checksum, curr_checksum)
+                        # TODO:
                         #remove_file(filename)
                 # If file has changed but we have checked this file recently, then we skip the check
                 elif ts - db_last_check_ts <= args.last_check_threshold:
-                    log.debug("file %s, has changed since last analisis %d %d but last check is more recent than the threshold, skipping", root_filename)
+                    log.debug("file %s, has changed since last analisis but last check is more recent than the threshold, skipping", root_filename)
                     continue
                 else:
                     log.debug("file %s, has changed since last analisis and last check less recent that the threshold")
@@ -636,8 +650,7 @@ else:
                 if db_file_id == None:
                     insert_in_db(conn, root_file, ts, num_blocks, file_checksum)
                 else:
-                    print("update DB")
-                    #update_db(conn, root_file, file_checksum, num_blocks, ts)
+                    update_db(conn, root_file, ts, num_blocks,file_checksum)
 
         else:
             log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
