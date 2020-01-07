@@ -34,7 +34,7 @@ setup(
     # There are some restrictions on what makes a valid project name
     # specification here:
     # https://packaging.python.org/specifications/core-metadata/#name
-    name='xcache-consistency-check',  # Required
+    name='xcc',  # Required
 
     # Versions should comply with PEP 440:
     # https://www.python.org/dev/peps/pep-0440/
@@ -69,7 +69,7 @@ setup(
     #
     # This field corresponds to the "Description-Content-Type" metadata field:
     # https://packaging.python.org/specifications/core-metadata/#description-content-type-optional
-    long_description_content_type='text/markdown',  # Optional (see note above)
+    #long_description_content_type='text/markdown',  # Optional (see note above)
 
     # This should be a valid link to your project's main homepage.
     #
@@ -122,7 +122,7 @@ setup(
     # called `my_module.py` to exist:
     #
     #py_modules=["stashcp"],
-    packages=["xcache-consistency-check"],
+    packages=["xcc"],
     
     #packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required
 
@@ -134,7 +134,8 @@ setup(
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
                 'zlib',
-                'lzma',
+                #'lzma',
+                'backports.lzma',
                 'xxhash',
     ],  # Optional
 
@@ -177,7 +178,7 @@ setup(
     # executes the function `main` from this package when invoked:
     entry_points={  # Optional
         'console_scripts': [
-            'xcache-consistency-check=xcache-consistency-check:main',
+            'xcc=xcc:main',
         ],
     },
 
@@ -190,8 +191,8 @@ setup(
     # issues, where the source is hosted, where to say thanks to the package
     # maintainers, and where to support the project financially. The key is
     # what's used to render the link text on PyPI.
-    project_urls={  # Optional
-        'Bug Reports': 'https://github.com/ddavila0/xcache_consistency_check/issues',
-        'Source': 'https://github.com/ddavila0/xcache_consistency_check',
-    },
+    #project_urls={  # Optional
+    #    'Bug Reports': 'https://github.com/ddavila0/xcache_consistency_check/issues',
+    #    'Source': 'https://github.com/ddavila0/xcache_consistency_check',
+    #},
 )
