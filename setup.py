@@ -133,7 +133,8 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-                'numpy',
+		'pip>=19.3.1',
+                'numpy<=1.16',
                 'uproot',
                 'xxhash',
     ],  # Optional
