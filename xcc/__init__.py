@@ -11,7 +11,6 @@ from multiprocessing import Process, Value, Lock
 import sqlite3
 from sqlite3 import Error
 import time
-import pdb
 
 try:
     import lzma
@@ -587,7 +586,6 @@ def main():
                     num_blocks=0
                 else:
                     is_full_file, byte_ranges, num_blocks = parse_cinfo(cinfo_filename)
-                pdb.set_trace()
                 ### Step 1.1 Do I need to fully analyze this file or only verify the checksum?
                 db_file_id = None
                 db_file_id, db_last_check_ts, db_last_num_blocks, db_checksum = get_file_from_db(conn, root_file)
