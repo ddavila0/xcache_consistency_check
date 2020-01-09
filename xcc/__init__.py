@@ -524,7 +524,6 @@ def main():
     #----- Setup the logger and the log level ------------------------------------
     #logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
     logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
-    log = logging.getLogger(__name__)
     #-----------------------------------------------------------------------------
     
     
@@ -655,5 +654,6 @@ def main():
     
             max_counter +=1
 
+log = logging.getLogger(__name__)
 if __name__ == "__main__":
     main()
