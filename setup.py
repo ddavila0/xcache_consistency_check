@@ -135,6 +135,7 @@ setup(
     install_requires=[
 		'pip>=19.3.1',
                 'numpy<=1.16',
+                'pyliblzma',
                 'uproot',
                 'xxhash',
     ],  # Optional
