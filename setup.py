@@ -34,7 +34,7 @@ setup(
     # There are some restrictions on what makes a valid project name
     # specification here:
     # https://packaging.python.org/specifications/core-metadata/#name
-    name='xcc',  # Required
+    name='xcache_consistency_check',  # Required
 
     # Versions should comply with PEP 440:
     # https://www.python.org/dev/peps/pep-0440/
@@ -122,7 +122,7 @@ setup(
     # called `my_module.py` to exist:
     #
     #py_modules=["stashcp"],
-    packages=["xcc"],
+    packages=["xcache_consistency_check"],
     
     #packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required
 
@@ -133,8 +133,6 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-		'pip>=19.3.1',
-                'numpy<=1.16',
                 'pyliblzma',
                 'uproot',
                 'xxhash',
@@ -179,7 +177,7 @@ setup(
     # executes the function `main` from this package when invoked:
     entry_points={  # Optional
         'console_scripts': [
-            'xcc=xcc:main',
+            'xcache_consistency_check=xcache_consistency_check:main',
         ],
     },
 
