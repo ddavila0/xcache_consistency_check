@@ -509,149 +509,151 @@ def get_file_from_db(conn, root_filename):
 ###############################################################################
 #                               MAIN
 ###############################################################################
-
-# Get arguments
-args = parseargs()
-
-#------ Configs --------------------------------------------------------------
-
-# Log level: {CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET}
-if args.debug == True:
-    log_lvl = logging.DEBUG
-else:
-    log_lvl = logging.INFO
-
-#----- Setup the logger and the log level ------------------------------------
-#logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
-logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
-log = logging.getLogger(__name__)
-#-----------------------------------------------------------------------------
-
-
-#------ DB setup--------------------------------------------------------------
-create_db(args.db)
-conn = create_connection(args.db)
-#-----------------------------------------------------------------------------
-
-
-#------ Find file(s)  ---------------------------------------------------------
-#TODO
-# validate that the path exist
-path = args.path
-assume_full_file = args.full_file
-
-# If path is not defined that means we are analizing a single root file
-if not path:
-    rootfile = args.rootfile
-    log.debug("@path is not defined, analyzing single file: "+rootfile)
-    only_filename_root  = os.path.basename(rootfile)
-    root_files_dict = dict()
-    root_files_dict[only_filename_root] = rootfile
-else:
-    root_files_dict  = list_files_recursively(path, ".root")
-    log.info("found: "+str(len(root_files_dict))+" .root files in: "+path)
-max_counter = 0
-
-
-#------ Dry Run  --------------------------------------------------------------
-if args.dry_run == True:
-    for root_file in root_files_dict:
-        if args.max > 0 and  max_counter >= args.max:
-            break
-        # Verify that there is a corresponfing .cinfo file
-        root_filename  = root_files_dict[root_file]
-        cinfo_filename = root_filename+".cinfo"
-        if os.path.isfile(cinfo_filename):
-            log.info("Analyzing file: "+ root_file)
-        else:
-            log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
-        max_counter +=1
-
-#------ Real Run  -------------------------------------------------------------
-else:
-    # For every root file
-    for root_file in root_files_dict:
-        if args.max > 0 and max_counter >= args.max:
-            break
-        # Verify that there is a corresponfing .cinfo file
-        root_filename  = root_files_dict[root_file]
-        cinfo_filename = root_filename+".cinfo"
-        if assume_full_file == True or os.path.isfile(cinfo_filename):
-        #if assume_full_file == True or root_file+".cinfo" in cinfo_files_dict:
-            log.info("Analyzing file: "+ root_file)
-            # Step 1. Calculate the byte ranges on the file
-            if assume_full_file == True:
-                is_full_file = True
-                byte_ranges = None
-                num_blocks=0
+def main():
+    # Get arguments
+    args = parseargs()
+    
+    #------ Configs --------------------------------------------------------------
+    
+    # Log level: {CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET}
+    if args.debug == True:
+        log_lvl = logging.DEBUG
+    else:
+        log_lvl = logging.INFO
+    
+    #----- Setup the logger and the log level ------------------------------------
+    #logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
+    logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
+    #-----------------------------------------------------------------------------
+    
+    
+    #------ DB setup--------------------------------------------------------------
+    create_db(args.db)
+    conn = create_connection(args.db)
+    #-----------------------------------------------------------------------------
+    
+    
+    #------ Find file(s)  ---------------------------------------------------------
+    #TODO
+    # validate that the path exist
+    path = args.path
+    assume_full_file = args.full_file
+    
+    # If path is not defined that means we are analizing a single root file
+    if not path:
+        rootfile = args.rootfile
+        log.debug("@path is not defined, analyzing single file: "+rootfile)
+        only_filename_root  = os.path.basename(rootfile)
+        root_files_dict = dict()
+        root_files_dict[only_filename_root] = rootfile
+    else:
+        root_files_dict  = list_files_recursively(path, ".root")
+        log.info("found: "+str(len(root_files_dict))+" .root files in: "+path)
+    max_counter = 0
+    
+    
+    #------ Dry Run  --------------------------------------------------------------
+    if args.dry_run == True:
+        for root_file in root_files_dict:
+            if args.max > 0 and  max_counter >= args.max:
+                break
+            # Verify that there is a corresponfing .cinfo file
+            root_filename  = root_files_dict[root_file]
+            cinfo_filename = root_filename+".cinfo"
+            if os.path.isfile(cinfo_filename):
+                log.info("Analyzing file: "+ root_file)
             else:
-                is_full_file, byte_ranges, num_blocks = parse_cinfo(cinfo_filename)
-            ### Step 1.1 Do I need to fully analyze this file or only verify the checksum?
-            db_file_id = None
-            db_file_id, db_last_check_ts, db_last_num_blocks, db_checksum = get_file_from_db(conn, root_file)
-
-            # if the file is in the DB and the number of downloaded blocks registerd in the db
-            # is the same as the current number of blocks in the file it means that the file
-            # hasn't change since the last analisis, so we just need to verify the checksums.
-            ts = int(time.time())
-            if db_file_id is not None:
-                if num_blocks == db_last_num_blocks:
-                    curr_checksum = calculate_checksum(root_filename)
-                    if db_checksum == curr_checksum:
-                        log.info("OK file's checksum:  %s", root_filename)
+                log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
+            max_counter +=1
+    
+    #------ Real Run  -------------------------------------------------------------
+    else:
+        # For every root file
+        for root_file in root_files_dict:
+            if args.max > 0 and max_counter >= args.max:
+                break
+            # Verify that there is a corresponfing .cinfo file
+            root_filename  = root_files_dict[root_file]
+            cinfo_filename = root_filename+".cinfo"
+            if assume_full_file == True or os.path.isfile(cinfo_filename):
+            #if assume_full_file == True or root_file+".cinfo" in cinfo_files_dict:
+                log.info("Analyzing file: "+ root_file)
+                # Step 1. Calculate the byte ranges on the file
+                if assume_full_file == True:
+                    is_full_file = True
+                    byte_ranges = None
+                    num_blocks=0
+                else:
+                    is_full_file, byte_ranges, num_blocks = parse_cinfo(cinfo_filename)
+                ### Step 1.1 Do I need to fully analyze this file or only verify the checksum?
+                db_file_id = None
+                db_file_id, db_last_check_ts, db_last_num_blocks, db_checksum = get_file_from_db(conn, root_file)
+    
+                # if the file is in the DB and the number of downloaded blocks registerd in the db
+                # is the same as the current number of blocks in the file it means that the file
+                # hasn't change since the last analisis, so we just need to verify the checksums.
+                ts = int(time.time())
+                if db_file_id is not None:
+                    if num_blocks == db_last_num_blocks:
+                        curr_checksum = calculate_checksum(root_filename)
+                        if db_checksum == curr_checksum:
+                            log.info("OK file's checksum:  %s", root_filename)
+                            continue
+                        # There are no new blocks added to the file but the file has changed
+                        # that means the file is corrupted
+                        else:
+                            log.info("Corrupted file's checksum:  %s, db:%s, curr:%s", root_filename, db_checksum, curr_checksum)
+                            # TODO:
+                            #remove_file(filename)
+                    # If file has changed but we have checked this file recently, then we skip the check
+                    elif ts - db_last_check_ts <= args.last_check_threshold:
+                        log.debug("file %s, has changed since last analisis but last check is more recent than the threshold, skipping", root_filename)
                         continue
-                    # There are no new blocks added to the file but the file has changed
-                    # that means the file is corrupted
                     else:
-                        log.info("Corrupted file's checksum:  %s, db:%s, curr:%s", root_filename, db_checksum, curr_checksum)
-                        # TODO:
-                        #remove_file(filename)
-                # If file has changed but we have checked this file recently, then we skip the check
-                elif ts - db_last_check_ts <= args.last_check_threshold:
-                    log.debug("file %s, has changed since last analisis but last check is more recent than the threshold, skipping", root_filename)
-                    continue
+                        log.debug("file %s, has changed since last analisis and last check less recent that the threshold")
                 else:
-                    log.debug("file %s, has changed since last analisis and last check less recent that the threshold")
-            else:
-                log.debug("file %s, not in the DB", root_filename)
-
-            # Step 2. Create a list of baskets in the file
-            list_of_baskets = get_list_of_baskets_in_file(root_filename, byte_ranges, is_full_file)
-
-            # Step 3. Look for a corrupted basket within the list
-            chunk = 10
-            basket_index = Value('i', 0)
-            corrupted_flag = Value('i', 0)
-            lock = Lock()
-
-            # The total number of processes to be used are num_workers + 1. The parent process is
-            # also used
-            num_workers = args.num_procs -1
-            process_list = []
-            for p in range(0, num_workers):
-                p = Process(target=check_baskets, args=(list_of_baskets, basket_index, chunk, len(list_of_baskets), corrupted_flag, lock, root_filename))
-                p.start()
-                process_list.append(p)
-
-            # The parent process is also doing his part
-            check_baskets(list_of_baskets, basket_index, chunk, len(list_of_baskets), corrupted_flag, lock, root_filename)
-
-            for p in process_list:
-                p.join()
-
-            if corrupted_flag.value ==True:
-                log.info("CORRUPTED file:  %s", root_filename)
-                #remove_file(root_filename)
-            else:
-                log.info("OK file:  %s", root_filename)
-                file_checksum = calculate_checksum(root_filename)
-                if db_file_id == None:
-                    insert_in_db(conn, root_file, ts, num_blocks, file_checksum)
+                    log.debug("file %s, not in the DB", root_filename)
+    
+                # Step 2. Create a list of baskets in the file
+                list_of_baskets = get_list_of_baskets_in_file(root_filename, byte_ranges, is_full_file)
+    
+                # Step 3. Look for a corrupted basket within the list
+                chunk = 10
+                basket_index = Value('i', 0)
+                corrupted_flag = Value('i', 0)
+                lock = Lock()
+    
+                # The total number of processes to be used are num_workers + 1. The parent process is
+                # also used
+                num_workers = args.num_procs -1
+                process_list = []
+                for p in range(0, num_workers):
+                    p = Process(target=check_baskets, args=(list_of_baskets, basket_index, chunk, len(list_of_baskets), corrupted_flag, lock, root_filename))
+                    p.start()
+                    process_list.append(p)
+    
+                # The parent process is also doing his part
+                check_baskets(list_of_baskets, basket_index, chunk, len(list_of_baskets), corrupted_flag, lock, root_filename)
+    
+                for p in process_list:
+                    p.join()
+    
+                if corrupted_flag.value ==True:
+                    log.info("CORRUPTED file:  %s", root_filename)
+                    #remove_file(root_filename)
                 else:
-                    update_db(conn, root_file, ts, num_blocks,file_checksum)
+                    log.info("OK file:  %s", root_filename)
+                    file_checksum = calculate_checksum(root_filename)
+                    if db_file_id == None:
+                        insert_in_db(conn, root_file, ts, num_blocks, file_checksum)
+                    else:
+                        update_db(conn, root_file, ts, num_blocks,file_checksum)
+    
+            else:
+                log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
+    
+            max_counter +=1
 
-        else:
-            log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
-
-        max_counter +=1
-
+log = logging.getLogger(__name__)
+if __name__ == "__main__":
+    main()
