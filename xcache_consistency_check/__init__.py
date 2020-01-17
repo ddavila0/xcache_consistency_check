@@ -15,7 +15,7 @@ from multiprocessing import Process, Value, Lock
 import sqlite3
 from sqlite3 import Error
 import time
-import pdb
+#import pdb
 
 def get_byte_ranges(byte_map_lines, blocksize):
 
@@ -446,6 +446,9 @@ def get_file_from_db(conn, root_filename):
 
 # Argument parsing
 def parseargs():
+
+    # Nothing is "required" because we don't want the args parser to enforce and argument
+    # that could be defined in the config file, we need to enforce in our own way, see Step 5 on set_configuration()
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--config", dest="config_file",
@@ -489,15 +492,17 @@ def parseargs():
 
 def set_configuration():
 
+    #pdb.set_trace()
     # Read command line arguments
     cmdline_args = parseargs()
 
     # Step 1. Set defaults:
     args = dict()
-    #args['logfile']                 = "/var/log/xcache_consistency_check/log.out"
     args['db']                      = "/var/xcache_consistency_check/db.sql"
     args['num_procs']               = 1
     args['last_check_threshold']    = 86400
+    # Log to stdout
+    args['logfile']                 = None
 
     args['full_file']   = False
     args['max']         = -1
@@ -511,10 +516,10 @@ def set_configuration():
         log.info("configuration file: "+config_file)
         config.read(config_file)
         args['path']                   = config.get('Main', 'path')
-        #args['logfile']                = config.get('Main', 'log')
+        args['logfile']                = config.get('Main', 'logfile')
         args['db']                     = config.get('Main', 'db')
-        args['num_procs']              = config.get('Main', 'num_procs')
-        args['last_check_threshold']   = config.get('Main', 'last_check_threshold')
+        args['num_procs']              = config.getint('Main', 'num_procs')
+        args['last_check_threshold']   = config.getint('Main', 'last_check_threshold')
     else:
         log.info("no config file provided")
 
@@ -522,7 +527,7 @@ def set_configuration():
     if(cmdline_args.path):
         args['path'] = cmdline_args.path
     if(cmdline_args.logfile):
-        args['log'] = cmdline_args.logfile
+        args['logfile'] = cmdline_args.logfile
     if(cmdline_args.db):
        args['db'] = cmdline_args.db
     if(cmdline_args.num_procs):
@@ -542,7 +547,6 @@ def set_configuration():
     if(cmdline_args.dry_run):
         args['dry_run']     = cmdline_args.dry_run
 
-    pdb.set_trace()
     # Step 5. Verify required conditions
     if 'path' not in args and not 'rootfile' in args:
            print("ERROR: Either --path or --rootfile need to be defined")
@@ -554,6 +558,7 @@ def set_configuration():
             print("ERROR: --rootfile: "+args['rootfile']+" does not exist")
             exit(1)
     #TODO:
+    # DB is set
     # We can write where the DB is supposed to be stored
     # We can write where logs are supposed to be stored
 
@@ -574,8 +579,7 @@ def main():
         log_lvl = logging.INFO
 
     #----- Setup the logger and the log level ------------------------------------
-    #logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
-    logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
+    logging.basicConfig(filename=args['logfile'], level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
     #-----------------------------------------------------------------------------
 
     # Print the arguments to debug log
