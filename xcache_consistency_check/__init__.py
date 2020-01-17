@@ -8,8 +8,8 @@ import logging
 import uproot
 import subprocess
 import zlib
-import lzma
-#import backports.lzma as lzma
+#import lzma
+import backports.lzma as lzma
 import xxhash
 from multiprocessing import Process, Value, Lock
 import sqlite3
@@ -451,6 +451,9 @@ def parseargs():
     # that could be defined in the config file, we need to enforce in our own way, see Step 5 on set_configuration()
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--enabled", dest="enabled", type=bool,
+                         help="Enable the execution, otherwise just exits (default: False)")
+
     parser.add_argument("--config", dest="config_file",
                          help="Path to configuration file")
 
@@ -480,7 +483,7 @@ def parseargs():
                          help="Number of parallel processes used to analyze the file(s) (default: 1)")
 
     parser.add_argument("--db", dest="db",
-                         help="Database used to keep track of analyzed files (default: /var/log/xcache_consistency_check/log.out)")
+                         help="Database used to keep track of analyzed files (default: /var/lib/xcache_consistency_check/db.sql)")
 
     parser.add_argument("--last-check-threshold", dest="last_check_threshold", type=int,
                          help="If a file has been checked within less than the number of seconds defined here, \
@@ -498,10 +501,12 @@ def set_configuration():
 
     # Step 1. Set defaults:
     args = dict()
-    args['db']                      = "/var/xcache_consistency_check/db.sql"
+    # Disable the execution by default (for the time being)
+    args['enabled']                 = False
+    args['db']                      = "/var/lib/xcache_consistency_check/db.sql"
     args['num_procs']               = 1
     args['last_check_threshold']    = 86400
-    # Log to stdout
+    # When set to None, it logs to stdout
     args['logfile']                 = None
 
     args['full_file']   = False
@@ -516,14 +521,17 @@ def set_configuration():
         log.info("configuration file: "+config_file)
         config.read(config_file)
         args['path']                   = config.get('Main', 'path')
-        args['logfile']                = config.get('Main', 'logfile')
+        args['enabled']                = config.getboolean('Main', 'enabled')
         args['db']                     = config.get('Main', 'db')
         args['num_procs']              = config.getint('Main', 'num_procs')
         args['last_check_threshold']   = config.getint('Main', 'last_check_threshold')
+        args['logfile']                = config.get('Main', 'logfile')
     else:
         log.info("no config file provided")
 
     # Step 3. Overwrite with command line arguments
+    if(cmdline_args.enabled):
+        args['enabled'] = cmdline_args.enabled
     if(cmdline_args.path):
         args['path'] = cmdline_args.path
     if(cmdline_args.logfile):
@@ -581,6 +589,11 @@ def main():
     #----- Setup the logger and the log level ------------------------------------
     logging.basicConfig(filename=args['logfile'], level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
     #-----------------------------------------------------------------------------
+
+    # If Disabled, exit the execution
+    if args['enabled'] == False:
+       log.info("Enabled is False, exiting ...")
+       exit(0)
 
     # Print the arguments to debug log
     log.debug("****** Configuration parametes ******")
