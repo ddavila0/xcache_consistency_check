@@ -3,27 +3,19 @@ import os
 import sys
 import glob
 import argparse
+import ConfigParser
 import logging
 import uproot
 import subprocess
 import zlib
+#import lzma
+import backports.lzma as lzma
+import xxhash
 from multiprocessing import Process, Value, Lock
 import sqlite3
 from sqlite3 import Error
 import time
-
-try:
-    import lzma
-except ImportError:
-    try:
-        import backports.lzma as lzma
-    except ImportError:
-        raise ImportError("Install lzma package with:\n\t pip install backports.lzma\nor\n\t conda install -c conda-forge backports.lzma\n(or use Python >= 3.3).")
-try:
-    import xxhash
-except ImportError:
-    raise ImportError("Install xxhash package with:\n\t pip install xxhash\nor\n\tconda install -c conda-forge python-xxhash")
-
+#import pdb
 
 def get_byte_ranges(byte_map_lines, blocksize):
 
@@ -364,62 +356,6 @@ def check_baskets(baskets_list, shrd_basket_index, chunk, num_baskets, shrd_corr
     fd.close()
 
 
-
-
-# Argument parsing
-def parseargs():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--path", dest="path", required=False,
-                         help="Path to the files to analyze, for a single file use --rootfile")
-
-    parser.add_argument("--rootfile", dest="rootfile", required=False,
-                         help=".root filename to be analyzed, if this is a partial file a .cinfo file with the same \
-                            name is expected or use --cinfofile to point to the corresponding .cinfo file. If this is\
-                             a full file set --full_file")
-
-    parser.add_argument("--full-file", dest="full_file", required=False, action="store_true",
-                         help="Assume that the root file passed in --rootfile is fully downloaded thus does not requires a cinfo file (default: False)")
-
-    parser.add_argument("--debug", dest="debug", required=False, action="store_true",
-                         help="Set log to DEBUG mode (default: False)")
-
-    parser.add_argument("--dry-run", dest="dry_run", required=False, action="store_true",
-                         help="Just list the files to be analyzed but do not run the check")
-
-    parser.add_argument("--max", dest="max", required=False, default=-1, type=int,
-                         help="Maximum number of files to analyze default(analyze all files)")
-
-    parser.add_argument("--num-procs", dest="num_procs", required=False, default=1, type=int,
-                         help="Number of parallel processes used to analyze the file(s) (default: 1)")
-
-    parser.add_argument("--db", dest="db", required=True,
-                         help="Database used to keep track of analyzed files")
-
-    parser.add_argument("--last-check-threshold", dest="last_check_threshold", required=False, default=86400, type=int,
-                         help="If a file has been checked within less than the number of seconds defined here, \
-                             the check on this file will be skipped (default: 86400(24hrs)")
-
-    args = parser.parse_args()
-
-    if not args.path and not args.rootfile:
-        print("ERROR: Either --path or --rootfile need to be defined")
-        exit(1)
-    # If --path is not defined then --rootfile it is
-    if not args.path:
-        # Check that the  root file exist
-        if os.path.isfile(args.rootfile) == False:
-            print("ERROR: --rootfile: "+args.rootfile+" does not exist")
-            exit(1)
-
-        # If --full_file isn't defined then rootfile+".cinfo" must exist
-        elif args.full_file == False:
-            if os.path.isfile(args.rootfile+".cinfo") == False:
-                print("ERROR --full_file isn't defined and file: "+args.rootfile+".cinfo"+" does not exist")
-                exit(1)
-
-    return args
-
 def create_table(conn, create_table_sql):
     try:
         c = conn.cursor()
@@ -506,56 +442,194 @@ def get_file_from_db(conn, root_filename):
     else:
         ret = (rows[0])
     return ret
+
+
+# Argument parsing
+def parseargs():
+
+    # Nothing is "required" because we don't want the args parser to enforce and argument
+    # that could be defined in the config file, we need to enforce in our own way, see Step 5 on set_configuration()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--enabled", dest="enabled", type=bool,
+                         help="Enable the execution, otherwise just exits (default: False)")
+
+    parser.add_argument("--config", dest="config_file",
+                         help="Path to configuration file")
+
+    parser.add_argument("--logfile", dest="logfile",
+                         help="Path to the files to store the logs")
+
+    parser.add_argument("--path", dest="path",
+                         help="Path to the files to analyze, for a single file use --rootfile (default: /xcache-root)")
+
+    parser.add_argument("--rootfile", dest="rootfile",
+                         help=".root filename to be analyzed, if this is a partial file a .cinfo file with the same \
+                            name is expected. If this is a full file set --full_file")
+
+    parser.add_argument("--full-file", dest="full_file", action="store_true", default=False,
+                         help="Assume that the root file passed in --rootfile is fully downloaded thus does not requires a cinfo file (default: False)")
+
+    parser.add_argument("--debug", dest="debug", action="store_true", default=False,
+                         help="Set log to DEBUG mode (default: False)")
+
+    parser.add_argument("--dry-run", dest="dry_run", action="store_true", default=False,
+                         help="Just list the files to be analyzed but do not run the check")
+
+    parser.add_argument("--max", dest="max", type=int, default=-1,
+                         help="Maximum number of files to analyze (default:analyze all files)")
+
+    parser.add_argument("--num-procs", dest="num_procs", type=int,
+                         help="Number of parallel processes used to analyze the file(s) (default: 1)")
+
+    parser.add_argument("--db", dest="db",
+                         help="Database used to keep track of analyzed files (default: /var/lib/xcache_consistency_check/db.sql)")
+
+    parser.add_argument("--last-check-threshold", dest="last_check_threshold", type=int,
+                         help="If a file has been checked within less than the number of seconds defined here, \
+                             the check on this file will be skipped (default: 86400(24hrs)")
+
+    args = parser.parse_args()
+
+    return args
+
+def set_configuration():
+
+    #pdb.set_trace()
+    # Read command line arguments
+    cmdline_args = parseargs()
+
+    # Step 1. Set defaults:
+    args = dict()
+    # Disable the execution by default (for the time being)
+    args['enabled']                 = False
+    args['db']                      = "/var/lib/xcache_consistency_check/db.sql"
+    args['num_procs']               = 1
+    args['last_check_threshold']    = 86400
+    # When set to None, it logs to stdout
+    args['logfile']                 = None
+
+    args['full_file']   = False
+    args['max']         = -1
+    args['debug']       = False
+    args['dry_run']     = False
+
+    # Step 2. Read config file
+    config = ConfigParser.ConfigParser(args)
+    config_file = cmdline_args.config_file
+    if(config_file):
+        log.info("configuration file: "+config_file)
+        config.read(config_file)
+        args['path']                   = config.get('Main', 'path')
+        args['enabled']                = config.getboolean('Main', 'enabled')
+        args['db']                     = config.get('Main', 'db')
+        args['num_procs']              = config.getint('Main', 'num_procs')
+        args['last_check_threshold']   = config.getint('Main', 'last_check_threshold')
+        args['logfile']                = config.get('Main', 'logfile')
+    else:
+        log.info("no config file provided")
+
+    # Step 3. Overwrite with command line arguments
+    if(cmdline_args.enabled):
+        args['enabled'] = cmdline_args.enabled
+    if(cmdline_args.path):
+        args['path'] = cmdline_args.path
+    if(cmdline_args.logfile):
+        args['logfile'] = cmdline_args.logfile
+    if(cmdline_args.db):
+       args['db'] = cmdline_args.db
+    if(cmdline_args.num_procs):
+       args['num_procs'] = cmdline_args.num_procs
+    if(cmdline_args.last_check_threshold):
+       args['last_check_threshold'] = cmdline_args.last_check_threshold
+
+    # Step 4. Get the arguments not allowed in the config file from the command line arguments
+    if(cmdline_args.rootfile):
+        args['rootfile']    = cmdline_args.rootfile
+    if(cmdline_args.full_file):
+        args['full_file']   = cmdline_args.full_file
+    if(cmdline_args.max):
+        args['max']         = cmdline_args.max
+    if(cmdline_args.debug):
+        args['debug']       = cmdline_args.debug
+    if(cmdline_args.dry_run):
+        args['dry_run']     = cmdline_args.dry_run
+
+    # Step 5. Verify required conditions
+    if 'path' not in args and not 'rootfile' in args:
+           print("ERROR: Either --path or --rootfile need to be defined")
+           exit(1)
+    # If --path is not defined then --rootfile it is
+    if 'path' not in args:
+        # Check that the  root file exist
+        if os.path.isfile(args['rootfile']) == False:
+            print("ERROR: --rootfile: "+args['rootfile']+" does not exist")
+            exit(1)
+    #TODO:
+    # DB is set
+    # We can write where the DB is supposed to be stored
+    # We can write where logs are supposed to be stored
+
+    return args
+
 ###############################################################################
 #                               MAIN
 ###############################################################################
 def main():
     # Get arguments
-    args = parseargs()
-    
+    args = set_configuration()
     #------ Configs --------------------------------------------------------------
-    
+
     # Log level: {CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET}
-    if args.debug == True:
+    if args['debug'] == True:
         log_lvl = logging.DEBUG
     else:
         log_lvl = logging.INFO
-    
+
     #----- Setup the logger and the log level ------------------------------------
-    #logging.basicConfig(level=log_lvl, format='%(asctime)s - %(name)s -  %(levelname)s - %(message)s', datefmt='%d-%m-%y %H:%M:%S')
-    logging.basicConfig(level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
+    logging.basicConfig(filename=args['logfile'], level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
     #-----------------------------------------------------------------------------
-    
-    
+
+    # If Disabled, exit the execution
+    if args['enabled'] == False:
+       log.info("Enabled is False, exiting ...")
+       exit(0)
+
+    # Print the arguments to debug log
+    log.debug("****** Configuration parametes ******")
+    for key in args.keys():
+        log.debug(key+" : "+str(args[key]))
+    log.debug("*************************************")
+
+
     #------ DB setup--------------------------------------------------------------
-    create_db(args.db)
-    conn = create_connection(args.db)
+    create_db(args['db'])
+    conn = create_connection(args['db'])
     #-----------------------------------------------------------------------------
-    
-    
+
+
     #------ Find file(s)  ---------------------------------------------------------
     #TODO
     # validate that the path exist
-    path = args.path
-    assume_full_file = args.full_file
-    
+    assume_full_file = args['full_file']
+
     # If path is not defined that means we are analizing a single root file
-    if not path:
-        rootfile = args.rootfile
-        log.debug("@path is not defined, analyzing single file: "+rootfile)
+    if not 'path' in args:
+        rootfile = args['rootfile']
+        log.debug("path is not defined, analyzing single file: "+rootfile)
         only_filename_root  = os.path.basename(rootfile)
         root_files_dict = dict()
         root_files_dict[only_filename_root] = rootfile
     else:
-        root_files_dict  = list_files_recursively(path, ".root")
-        log.info("found: "+str(len(root_files_dict))+" .root files in: "+path)
+        root_files_dict  = list_files_recursively(args['path'], ".root")
+        log.info("found: "+str(len(root_files_dict))+" .root files in: "+args['path'])
     max_counter = 0
-    
-    
+
+
     #------ Dry Run  --------------------------------------------------------------
-    if args.dry_run == True:
+    if args['dry_run'] == True:
         for root_file in root_files_dict:
-            if args.max > 0 and  max_counter >= args.max:
+            if args['max'] > 0 and  max_counter >= args['max']:
                 break
             # Verify that there is a corresponfing .cinfo file
             root_filename  = root_files_dict[root_file]
@@ -565,12 +639,12 @@ def main():
             else:
                 log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
             max_counter +=1
-    
+
     #------ Real Run  -------------------------------------------------------------
     else:
         # For every root file
         for root_file in root_files_dict:
-            if args.max > 0 and max_counter >= args.max:
+            if args['max'] > 0 and max_counter >= args['max']:
                 break
             # Verify that there is a corresponfing .cinfo file
             root_filename  = root_files_dict[root_file]
@@ -588,7 +662,7 @@ def main():
                 ### Step 1.1 Do I need to fully analyze this file or only verify the checksum?
                 db_file_id = None
                 db_file_id, db_last_check_ts, db_last_num_blocks, db_checksum = get_file_from_db(conn, root_file)
-    
+
                 # if the file is in the DB and the number of downloaded blocks registerd in the db
                 # is the same as the current number of blocks in the file it means that the file
                 # hasn't change since the last analisis, so we just need to verify the checksums.
@@ -606,38 +680,38 @@ def main():
                             # TODO:
                             #remove_file(filename)
                     # If file has changed but we have checked this file recently, then we skip the check
-                    elif ts - db_last_check_ts <= args.last_check_threshold:
+                    elif ts - db_last_check_ts <= args['last_check_threshold']:
                         log.debug("file %s, has changed since last analisis but last check is more recent than the threshold, skipping", root_filename)
                         continue
                     else:
                         log.debug("file %s, has changed since last analisis and last check less recent that the threshold")
                 else:
                     log.debug("file %s, not in the DB", root_filename)
-    
+
                 # Step 2. Create a list of baskets in the file
                 list_of_baskets = get_list_of_baskets_in_file(root_filename, byte_ranges, is_full_file)
-    
+
                 # Step 3. Look for a corrupted basket within the list
                 chunk = 10
                 basket_index = Value('i', 0)
                 corrupted_flag = Value('i', 0)
                 lock = Lock()
-    
+
                 # The total number of processes to be used are num_workers + 1. The parent process is
                 # also used
-                num_workers = args.num_procs -1
+                num_workers = args['num_procs'] -1
                 process_list = []
                 for p in range(0, num_workers):
                     p = Process(target=check_baskets, args=(list_of_baskets, basket_index, chunk, len(list_of_baskets), corrupted_flag, lock, root_filename))
                     p.start()
                     process_list.append(p)
-    
+
                 # The parent process is also doing his part
                 check_baskets(list_of_baskets, basket_index, chunk, len(list_of_baskets), corrupted_flag, lock, root_filename)
-    
+
                 for p in process_list:
                     p.join()
-    
+
                 if corrupted_flag.value ==True:
                     log.info("CORRUPTED file:  %s", root_filename)
                     #remove_file(root_filename)
@@ -648,10 +722,10 @@ def main():
                         insert_in_db(conn, root_file, ts, num_blocks, file_checksum)
                     else:
                         update_db(conn, root_file, ts, num_blocks,file_checksum)
-    
+
             else:
                 log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
-    
+
             max_counter +=1
 
 log = logging.getLogger(__name__)
