@@ -8,14 +8,12 @@ import logging
 import uproot
 import subprocess
 import zlib
-#import lzma
-import backports.lzma as lzma
+import lzma
 import xxhash
 from multiprocessing import Process, Value, Lock
 import sqlite3
 from sqlite3 import Error
 import time
-#import pdb
 
 def get_byte_ranges(byte_map_lines, blocksize):
 
@@ -347,7 +345,7 @@ def check_baskets(baskets_list, shrd_basket_index, chunk, num_baskets, shrd_corr
                     lock.release()
                     break
 
-            elif algo == b"CS":
+            elif algo_bytes == "CS":
                 log.info("process: " +str(os.getpid()) +", Unsupported very OLD algorithm: "+algo_bytes+" , skipping basket...")
 
             else:
@@ -495,7 +493,6 @@ def parseargs():
 
 def set_configuration():
 
-    #pdb.set_trace()
     # Read command line arguments
     cmdline_args = parseargs()
 
