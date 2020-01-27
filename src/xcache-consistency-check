@@ -71,8 +71,7 @@ def parse_cinfo(filename):
     blocksize = get_block_size(lines)
 
     # Check wheter the file is fully downloaded or its a partial file
-    # and how many blocks have been downloaded
-    full_file, num_blocks = is_file_fully_downloaded(lines)
+    full_file = is_file_fully_downloaded(lines)
 
     # Extract the lines containing the byte map
     byte_map = get_byte_map(lines)
@@ -80,7 +79,7 @@ def parse_cinfo(filename):
     # Use the bytemap to calculate byte ranges within the file
     byte_ranges = get_byte_ranges(byte_map, blocksize)
 
-    return full_file, byte_ranges, num_blocks
+    return full_file, byte_ranges
 
 def get_byte_map(lines):
     byte_map = []
@@ -128,8 +127,7 @@ def get_block_size(lines):
 
     return blocksize
 
-# Chek whether the file is fully downloaded and how many blocks have been
-# downloaded so far
+# Chek whether the file is fully downloaded
 def is_file_fully_downloaded(lines):
     nBlocks = -1
     nDownloaded = -2
@@ -146,7 +144,7 @@ def is_file_fully_downloaded(lines):
                     nDownloaded = int(line_splitted[i+1])
 
     # If nBlocks is equals to nDonwloaded then the file is fully downloaded
-    return (nBlocks == nDownloaded), nDownloaded
+    return (nBlocks == nDownloaded)
 
 def get_xrdpfc_print_ouput(filename):
     lines = []
@@ -379,7 +377,7 @@ def create_db(filename):
                                         id integer PRIMARY KEY,
                                         filename text,
                                         last_check_ts integer,
-                                        last_num_blocks integer,
+                                        last_modification_date integer,
                                         checksum text
                                     ); """
 
@@ -399,25 +397,25 @@ def calculate_checksum(filename):
     checksum = str(xxhash.xxh64(file_bytes).intdigest())
     return checksum
 
-def insert_in_db(conn, root_filename, ts, num_blocks, file_checksum):
-    sql = ''' INSERT INTO files(filename, last_check_ts, last_num_blocks, checksum)
+def insert_in_db(conn, root_filename, ts, last_modification_date, file_checksum):
+    sql = ''' INSERT INTO files(filename, last_check_ts, last_modification_date, checksum)
               VALUES(?,?,?,?) '''
 
-    record =(root_filename, ts, num_blocks, file_checksum)
+    record =(root_filename, ts, last_modification_date, file_checksum)
     with conn:
         cur = conn.cursor()
         cur.execute(sql, record)
     log.debug("inserted record: "+str(cur.lastrowid))
 
 # When a file has changed (new blocks have been downloaded) its record needs to be updated
-def update_db(conn, root_filename, ts, num_blocks, file_checksum):
+def update_db(conn, root_filename, ts, last_modification_date, file_checksum):
     sql = ''' UPDATE files
                 SET last_check_ts = ?,
-                    last_num_blocks = ?,
+                    last_modification_date = ?,
                     checksum = ?
                 WHERE filename = ?'''
 
-    record =(ts, num_blocks, file_checksum, root_filename)
+    record =(ts, last_modification_date, file_checksum, root_filename)
     with conn:
         cur = conn.cursor()
         cur.execute(sql, record)
@@ -426,7 +424,7 @@ def update_db(conn, root_filename, ts, num_blocks, file_checksum):
 
 
 def get_file_from_db(conn, root_filename):
-    sql = ''' SELECT id, last_check_ts, last_num_blocks, checksum
+    sql = ''' SELECT id, last_check_ts, last_modification_date, checksum
               FROM files
               WHERE filename =?'''
 
@@ -586,7 +584,7 @@ def main():
     log.info("*******************************************")
     log.info("********* Configuration parametes *********")
     for key in args.keys():
-        log.debug(key+" : "+str(args[key]))
+        log.info(key+" : "+str(args[key]))
     log.info("*******************************************")
 
 
@@ -640,23 +638,23 @@ def main():
             if assume_full_file == True or os.path.isfile(cinfo_filename):
             #if assume_full_file == True or root_file+".cinfo" in cinfo_files_dict:
                 log.info("Analyzing file: "+ root_file)
-                # Step 1. Calculate the byte ranges on the file
-                if assume_full_file == True:
-                    is_full_file = True
-                    byte_ranges = None
-                    num_blocks=0
-                else:
-                    is_full_file, byte_ranges, num_blocks = parse_cinfo(cinfo_filename)
-                ### Step 1.1 Do I need to fully analyze this file or only verify the checksum?
+                # The file could have disappeared from th emoment we listed it, and until
+                # the moment it's its turn to be analyzed so let's check that it's still there
+                if not os.path.isfile(root_filename):
+                    log.info("File: "+ root_filename+" does not longer exist, skipping..")
+                    continue
+                ### Step 1.0 Do I need to fully analyze this file or only verify the checksum?
                 db_file_id = None
-                db_file_id, db_last_check_ts, db_last_num_blocks, db_checksum = get_file_from_db(conn, root_file)
+                # Get file's last modification date
+                last_modification_date = int(os.path.getmtime(root_filename))
+                db_file_id, db_last_check_ts, db_last_modification_date, db_checksum = get_file_from_db(conn, root_file)
 
-                # if the file is in the DB and the number of downloaded blocks registerd in the db
-                # is the same as the current number of blocks in the file it means that the file
+                # if the file is in the DB and the last modification date registerd in the db
+                # is the same as the current one, it means that the file
                 # hasn't change since the last analisis, so we just need to verify the checksums.
                 ts = int(time.time())
                 if db_file_id is not None:
-                    if num_blocks == db_last_num_blocks:
+                    if last_modification_date == db_last_modification_date:
                         curr_checksum = calculate_checksum(root_filename)
                         if db_checksum == curr_checksum:
                             log.info("OK file's checksum:  %s", root_filename)
@@ -664,7 +662,7 @@ def main():
                         # There are no new blocks added to the file but the file has changed
                         # that means the file is corrupted
                         else:
-                            log.info("Corrupted file's checksum:  %s, db:%s, curr:%s", root_filename, db_checksum, curr_checksum)
+                            log.info("CORRUPTED file's checksum:  %s, db:%s, curr:%s", root_filename, db_checksum, curr_checksum)
                             # TODO:
                             #remove_file(filename)
                     # If file has changed but we have checked this file recently, then we skip the check
@@ -676,6 +674,14 @@ def main():
                 else:
                     log.debug("file %s, not in the DB", root_filename)
 
+                # Step 1.1 Calculate the byte ranges on the file unless the file is to be assumed
+                # fully downloaded (see option --full-file)
+                if assume_full_file == True:
+                    is_full_file = True
+                    byte_ranges = None
+                else:
+                    log.debug("Starting to parse cinfo file")
+                    is_full_file, byte_ranges = parse_cinfo(cinfo_filename)
                 # Step 2. Create a list of baskets in the file
                 list_of_baskets = get_list_of_baskets_in_file(root_filename, byte_ranges, is_full_file)
 
@@ -707,9 +713,9 @@ def main():
                     log.info("OK file:  %s", root_filename)
                     file_checksum = calculate_checksum(root_filename)
                     if db_file_id == None:
-                        insert_in_db(conn, root_file, ts, num_blocks, file_checksum)
+                        insert_in_db(conn, root_file, ts, last_modification_date, file_checksum)
                     else:
-                        update_db(conn, root_file, ts, num_blocks,file_checksum)
+                        update_db(conn, root_file, ts, last_modification_date, file_checksum)
 
             else:
                 log.error("Cannot find a corresponding .cinfo file for root file:  %s", root_filename)
