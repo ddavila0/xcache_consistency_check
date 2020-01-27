@@ -449,9 +449,6 @@ def parseargs():
     # that could be defined in the config file, we need to enforce in our own way, see Step 5 on set_configuration()
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--enabled", dest="enabled", type=bool,
-                         help="Enable the execution, otherwise just exits (default: False)")
-
     parser.add_argument("--config", dest="config_file",
                          help="Path to configuration file")
 
@@ -499,7 +496,6 @@ def set_configuration():
     # Step 1. Set defaults:
     args = dict()
     # Disable the execution by default (for the time being)
-    args['enabled']                 = False
     args['db']                      = "/var/lib/xcache_consistency_check/db.sql"
     args['num_procs']               = 1
     args['last_check_threshold']    = 86400
@@ -518,7 +514,6 @@ def set_configuration():
         log.info("configuration file: "+config_file)
         config.read(config_file)
         args['path']                   = config.get('Main', 'path')
-        args['enabled']                = config.getboolean('Main', 'enabled')
         args['db']                     = config.get('Main', 'db')
         args['num_procs']              = config.getint('Main', 'num_procs')
         args['last_check_threshold']   = config.getint('Main', 'last_check_threshold')
@@ -527,8 +522,6 @@ def set_configuration():
         log.info("no config file provided")
 
     # Step 3. Overwrite with command line arguments
-    if(cmdline_args.enabled):
-        args['enabled'] = cmdline_args.enabled
     if(cmdline_args.path):
         args['path'] = cmdline_args.path
     if(cmdline_args.logfile):
@@ -587,16 +580,14 @@ def main():
     logging.basicConfig(filename=args['logfile'], level=log_lvl, format='%(asctime)s  %(levelname)s - %(message)s', datefmt='%Y%m%d %H:%M:%S')
     #-----------------------------------------------------------------------------
 
-    # If Disabled, exit the execution
-    if args['enabled'] == False:
-       log.info("Enabled is False, exiting ...")
-       exit(0)
-
     # Print the arguments to debug log
-    log.debug("****** Configuration parametes ******")
+    log.info("*******************************************")
+    log.info("**** Xcache consistency check starting ****")
+    log.info("*******************************************")
+    log.info("********* Configuration parametes *********")
     for key in args.keys():
         log.debug(key+" : "+str(args[key]))
-    log.debug("*************************************")
+    log.info("*******************************************")
 
 
     #------ DB setup--------------------------------------------------------------
